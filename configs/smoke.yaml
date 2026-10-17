@@ -1,0 +1,26 @@
+# Tiny run for checking the pipeline end to end on a free Colab T4 (or CPU for the non-model parts).
+languages:
+  reference: en
+  targets: [es, de]
+
+models:
+  - id: qwen2.5-1.5b
+    hf_name: Qwen/Qwen2.5-1.5B-Instruct
+    small_variant: Qwen/Qwen2.5-0.5B-Instruct
+
+checkpoints: [base]
+
+generation:
+  load_in_4bit: false
+  max_new_tokens: 128
+  batch_size: 4
+
+data:
+  n_eval_prompts: 20
+  n_verified_per_lang: 5
+  n_oracle_labels: 20
+
+agents:
+  population_cap: 6
+  lifecycle_cycles: 3
+  batch_per_cycle: 10

@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# mpac experiment artifacts (live on Google Drive)
+artifacts/
+*.events.jsonl

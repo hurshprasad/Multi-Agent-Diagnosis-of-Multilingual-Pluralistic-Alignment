@@ -1,0 +1,52 @@
+# Default experiment config. Override per run with a second YAML (see configs/smoke.yaml).
+
+project:
+  name: mpac
+  seed: 42
+  # Root for all cached artifacts. On Colab, paths.resolve_root() swaps this for
+  # /content/drive/MyDrive/<drive_subdir> when Drive is mounted, so caches survive runtime resets.
+  root: ./artifacts
+  drive_subdir: mpac
+
+languages:
+  reference: en
+  targets: [pt, es, it, de, fr]   # Portuguese, Spanish, Italian, German, French
+
+objectives: [helpfulness, honesty, pluralistic_value]
+
+models:
+  - id: qwen2.5-7b
+    hf_name: Qwen/Qwen2.5-7B-Instruct
+    small_variant: Qwen/Qwen2.5-1.5B-Instruct   # for T4 / smoke tests
+  - id: llama3.1-8b
+    hf_name: meta-llama/Llama-3.1-8B-Instruct   # gated: needs HF_TOKEN with access granted
+    small_variant: meta-llama/Llama-3.2-1B-Instruct
+
+checkpoints: [base, en_aligned, multi_aligned]
+
+generation:
+  backend: transformers          # transformers | vllm
+  load_in_4bit: true             # needed for 7-8B on a 16 GB T4
+  max_new_tokens: 512
+  temperature: 0.0
+  batch_size: 8
+
+data:
+  dataset: PLURAL                # TODO(team): confirm exact HF dataset id — see docs/decisions.md
+  n_eval_prompts: 500
+  n_verified_per_lang: 100       # manually checked translations
+  n_oracle_labels: 300           # human-labelled items used to score evaluators
+
+training:
+  method: dpo
+  use_lora: true
+  budget_steps: 1000             # identical for en_aligned and multi_aligned
+
+agents:
+  population_cap: 24
+  lifecycle_cycles: 10
+  batch_per_cycle: 50            # items each agent evaluates per cycle
+  retain_threshold: 0.6          # min utility to survive a cycle
+  redundancy_threshold: 0.95     # agreement above this with a better agent => destroy
+  spawn_on_unexplained_divergence: 0.15
+  evaluator_type: lightweight    # lightweight | llm_judge

@@ -27,6 +27,8 @@ gpu = [
     "bitsandbytes>=0.43",   # 4-bit loading so 7-8B models fit on a T4
     "trl>=0.10",
     "peft>=0.12",
+    "sentencepiece>=0.2",   # MADLAD / NLLB tokenizers
+    "sacrebleu>=2.4",       # chrF for MT round-trip checks
 ]
 # Optional fast batched generation (works on L4/A100 runtimes; often fails on T4).
 vllm = ["vllm>=0.5"]
@@ -35,7 +37,7 @@ signals = [
     "sentence-transformers>=3.0",   # LaBSE cross-lingual similarity
     "fasttext-langdetect>=1.0",     # language-ID check for silent language switching
 ]
-dev = ["pytest>=8.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "sacrebleu>=2.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

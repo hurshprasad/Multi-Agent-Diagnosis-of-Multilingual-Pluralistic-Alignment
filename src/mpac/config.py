@@ -42,3 +42,14 @@ def load_config(*overrides: str | Path, base: str | Path = DEFAULT_CONFIG) -> di
 def all_languages(cfg: dict) -> list[str]:
     """Reference language first, then targets."""
     return [cfg["languages"]["reference"], *cfg["languages"]["targets"]]
+
+
+def get_model(cfg: dict, model_id: str | None = None) -> dict:
+    """The `models:` entry with this id (the first one when model_id is None)."""
+    models = cfg["models"]
+    if model_id is None:
+        return models[0]
+    for m in models:
+        if m["id"] == model_id:
+            return m
+    raise KeyError(f"no model {model_id!r} in config; choose from {[m['id'] for m in models]}")

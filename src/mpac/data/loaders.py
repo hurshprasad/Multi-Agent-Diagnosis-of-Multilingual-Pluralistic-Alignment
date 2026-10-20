@@ -1,42 +1,40 @@
-"""Load pluralistic alignment data and build parallel multilingual evaluation items.
+"""Load the parallel multilingual evaluation items built by data/build.py.
 
 Owner: data/training track.
 """
 
 from __future__ import annotations
 
+from mpac.data.io import read_jsonl
 from mpac.data.schema import ParallelItem
 
 
-def load_plural(cfg: dict, split: str = "test") -> list[dict]:
-    """Load raw English items from the pluralistic alignment dataset.
+def load_items(cfg: dict, verified_only: bool = False) -> list[ParallelItem]:
+    """The built evaluation set (data/build.py) with any filled verification sheets applied.
 
-    TODO(team): confirm which dataset "PLURAL" refers to and its HF id (docs/decisions.md, D1).
-    Candidates to evaluate should provide (a) prompts tied to helpfulness / honesty /
-    pluralistic value and (b) ideally a forced-choice subset so ACS can be computed exactly.
+    verified_only=True keeps, per item, only the reference language and the target languages
+    whose translation a fluent speaker accepted; items with no verified target are dropped.
+    That is the "manually verified subset" key results are also reported on.
     """
-    raise NotImplementedError("Set data.dataset to a concrete HF id, then implement this loader.")
+    from mpac.data.verification import apply_verification
+    from mpac.paths import subdir
 
-
-def to_parallel_items(raw: list[dict], translations: dict[str, dict[str, str]]) -> list[ParallelItem]:
-    """Join English items with their translations into ParallelItems.
-
-    `translations` maps lang -> {item_id: translated_prompt}.
-    """
-    items = []
-    for r in raw:
-        prompts = {"en": r["prompt"]}
-        for lang, table in translations.items():
-            if r["item_id"] in table:
-                prompts[lang] = table[r["item_id"]]
-        items.append(
-            ParallelItem(
-                item_id=r["item_id"],
-                objective=r["objective"],
-                prompts=prompts,
-                options=r.get("options"),
-            )
-        )
+    path = subdir(cfg, "items") / "items.jsonl"
+    items = [ParallelItem.from_dict(d) for d in read_jsonl(path)]
+    if not items:
+        raise FileNotFoundError(f"no items at {path}; run notebooks/03_build_dataset.ipynb")
+    ver_dir = subdir(cfg, "verification")
+    for lang in cfg["languages"]["targets"]:
+        if (ver_dir / f"{lang}.csv").exists():
+            apply_verification(items, lang, ver_dir / f"{lang}.csv")
+    if verified_only:
+        ref = cfg["languages"]["reference"]
+        for it in items:
+            keep = {ref} | {lang for lang, ok in it.translation_verified.items() if ok}
+            it.prompts = {k: v for k, v in it.prompts.items() if k in keep}
+            if it.options:
+                it.options = {k: v for k, v in it.options.items() if k in keep}
+        items = [it for it in items if len(it.prompts) > 1]
     return items
 
 

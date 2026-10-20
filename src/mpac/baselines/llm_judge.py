@@ -16,7 +16,7 @@ from __future__ import annotations
 from mpac.agents.base import Agent, Evaluation
 
 LANG_NAMES = {"en": "English", "pt": "Portuguese", "es": "Spanish", "it": "Italian",
-              "de": "German", "fr": "French"}
+              "de": "German", "fr": "French", "hi": "Hindi"}
 
 
 class LLMJudgeAgent(Agent):

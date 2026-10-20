@@ -1,0 +1,20 @@
+# Solo pilot: English -> Hindi and Portuguese. Layer on top of default.yaml.
+#   cfg = load_config("configs/hi_pt.yaml")
+# Hindi is a lower-resource contrast; Portuguese is one of the team's in-scope languages.
+# Artifacts go to their own Drive folder so this run never mixes with the team's cache.
+project:
+  drive_subdir: mpac_hi_pt
+  root: ./artifacts_hi_pt
+
+languages:
+  reference: en
+  targets: [hi, pt]              # pt: Brazilian Portuguese expected (D9); check in verification
+
+checkpoints: [base]              # add en_aligned / multi_aligned once DPO is trained
+
+data:
+  n_verified_per_lang: 100
+  n_oracle_labels: 120           # 2 languages x 3 objectives x 20
+
+agents:
+  population_cap: 10

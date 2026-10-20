@@ -43,6 +43,13 @@ data:
   n_oracle_labels: 300           # human-labelled items used to score evaluators
   tune_frac: 0.333               # share of items whose oracle labels may tune thresholds (data/splits.py)
 
+build:                           # items drawn per source by data/build.py (about 500 in total)
+  wvs: 111                       # all WVS survey questions (forced choice)
+  plural: 90                     # PLURAL prompts (free text)
+  truthfulqa: 150                # forced choice: correct answer + 3 distractors
+  truthfulqa_max_options: 4
+  ultrafeedback: 150             # short, non-code prompts (free text)
+
 translation:
   model: google/madlad400-3b-mt  # proposed (D4); compare in notebooks/02_phase0_decisions.ipynb
 

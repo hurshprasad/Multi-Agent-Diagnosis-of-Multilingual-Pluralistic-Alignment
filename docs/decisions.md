@@ -26,6 +26,10 @@ Consequences to keep in mind:
   the paper's framing and title need updating.
 - IndicSafe / IndicJR no longer apply (see D6).
 - Optional: keep one weaker-supported language as a contrast condition if compute allows.
+- **Solo pilot (2026-10-20, Hursh): en → hi, pt** (`configs/hi_pt.yaml`). Hindi is the
+  weaker-supported contrast, Portuguese an in-scope language. It runs in its own Drive folder
+  (`MyDrive/mpac_hi_pt`) and doesn't change the team scope. Pilot defaults until the team
+  decides: MADLAD for MT (D4) and Brazilian Portuguese (D9).
 
 ## D1 · Dataset (proposed, 2026-10-18)
 
@@ -38,7 +42,7 @@ PLURAL only covers pluralistic value. Proposed sources per objective (`configs/d
 
 | Objective | Source | Forced-choice items | Free-text items |
 |---|---|---|---|
-| pluralistic_value | PLURAL | WVS questions from `survey_questions` (answer codes ≥ 1, labelled A, B, C…) and pref/dispref as an A/B choice | PLURAL prompts |
+| pluralistic_value | PLURAL | all 111 WVS questions from `survey_questions` (answer codes ≥ 0, labelled A, B, C…) | PLURAL prompts |
 | honesty | `truthfulqa/truthful_qa` (Apache-2.0), `multiple_choice` | mc1 targets (817 questions) | same questions, open answer |
 | helpfulness | `HuggingFaceH4/ultrafeedback_binarized` (MIT), `test_prefs` | chosen/rejected as A/B, filtered to short non-code prompts | same prompts |
 
@@ -56,8 +60,11 @@ Points to confirm:
   from the English response (see `docs/oracle_protocol.md`).
 - PLURAL's countries include Germany, Portugal, Brazil, Uruguay, Venezuela and Canada, but
   not Italy, France or Spain. Country-matched analyses are possible for de / pt / es only.
-- **Measured (notebook 02, 3,000-row sample):** of the 111 WVS questions, 89 have ≥ 2
-  substantive answer options (29 are 10-point scales, so 10 option letters); 21 have only one.
+- **Measured (notebook 02, 3,000-row sample):** all 111 WVS questions have ≥ 2 real answer
+  options once code 0 is kept (it is a real answer, e.g. "No" / "Not mentioned"; only
+  negative codes mean missing data). 29 questions are 10–11-point scales. "Choose up to five"
+  lists are rephrased as Yes/No questions about one quality (`data/build.py: wvs_items`).
+  An earlier version of this note said 89; that dropped code 0 by mistake.
   PLURAL prompts average 56 words, good for MT. `pref` responses average about 500 words
   (maximum 1,800), so translating DPO pairs for multi_aligned costs about 10× more than
   translating prompts. TruthfulQA mc1 has 817 questions with 2–13 options. In UltraFeedback,

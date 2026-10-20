@@ -1,0 +1,23 @@
+# Tiny version of hi_pt for a first end-to-end check (minutes, not hours).
+#   cfg = load_config("configs/hi_pt.yaml", "configs/hi_pt_quick.yaml")
+project:
+  drive_subdir: mpac_hi_pt_quick
+  root: ./artifacts_hi_pt_quick
+
+models:
+  - id: qwen2.5-1.5b
+    hf_name: Qwen/Qwen2.5-1.5B-Instruct
+    small_variant: Qwen/Qwen2.5-0.5B-Instruct
+
+generation:
+  load_in_4bit: false
+  max_new_tokens: 200
+
+build:
+  wvs: 10
+  plural: 5
+  truthfulqa: 10
+  ultrafeedback: 5
+
+data:
+  n_verified_per_lang: 10

@@ -7,6 +7,29 @@ from typing import Any
 
 
 @dataclass
+class SourceItem:
+    """An English evaluation item before translation (data/build.py).
+
+    The stem and each option are translated separately and assembled into a prompt per
+    language afterwards, so option letters (A, B, C...) never pass through the MT model.
+    """
+
+    item_id: str
+    objective: str                       # helpfulness | honesty | pluralistic_value
+    source: str                          # wvs | plural | truthfulqa | ultrafeedback
+    stem: str
+    options: list[str] | None = None     # option texts in display order; None = free text
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> SourceItem:
+        return cls(**d)
+
+
+@dataclass
 class ParallelItem:
     """One evaluation prompt expressed in every language with the same semantic intent.
 

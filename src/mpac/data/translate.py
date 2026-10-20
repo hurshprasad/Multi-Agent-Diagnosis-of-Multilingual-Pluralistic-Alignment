@@ -3,7 +3,8 @@
 Owner: data/training track. Requires the `gpu` extra (plus `mt` for round-trip scoring).
 
 Design notes
-- Translate once, cache to <root>/translations/<lang>.jsonl, never re-translate silently.
+- Translate once, cache to <root>/translations/<mt model>/<lang>.jsonl (TranslationCache),
+  never re-translate silently.
 - Keep forced-choice option labels (A/B/C) untranslated so option order is identical across languages.
 - Flag n_verified_per_lang items per language for manual checking; store the result in
   ParallelItem.translation_verified so analyses can be re-run on verified items only.
@@ -16,6 +17,9 @@ Design notes
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
+
+from mpac.data.io import read_jsonl, write_jsonl
 
 MT_CANDIDATES = {
     "madlad": "google/madlad400-3b-mt",            # Apache-2.0, T5 architecture
@@ -23,7 +27,7 @@ MT_CANDIDATES = {
 }
 
 NLLB_CODES = {"en": "eng_Latn", "pt": "por_Latn", "es": "spa_Latn", "it": "ita_Latn",
-              "de": "deu_Latn", "fr": "fra_Latn"}
+              "de": "deu_Latn", "fr": "fra_Latn", "hi": "hin_Deva"}
 
 
 def _family(model_name: str) -> str:
@@ -104,6 +108,45 @@ class Translator:
             flat.extend(lines)
         done = self._translate_lines(flat, target_lang, source_lang) if flat else []
         return [join_paragraphs(done[s : s + n], keep, n_lines) for s, n, keep, n_lines in spans]
+
+
+class TranslationCache:
+    """English text -> translation, one JSONL per (MT model, language), append-only.
+
+    Layout: <root>/<model short name>/<lang>.jsonl with rows {"src": ..., "tgt": ...}.
+    Keyed by the exact English string, so a text shared by many items (an instruction, an
+    answer option like "Agree") is translated once. Written chunk by chunk, so a Colab
+    disconnect loses at most one chunk.
+    """
+
+    def __init__(self, root: str | Path, model_name: str):
+        self.dir = Path(root) / model_name.rstrip("/").split("/")[-1]
+
+    def path(self, lang: str) -> Path:
+        return self.dir / f"{lang}.jsonl"
+
+    def load(self, lang: str) -> dict[str, str]:
+        return {r["src"]: r["tgt"] for r in read_jsonl(self.path(lang))}
+
+    def missing(self, texts: list[str], lang: str) -> list[str]:
+        have = self.load(lang)
+        return [t for t in dict.fromkeys(texts) if t not in have]
+
+    def translate_missing(self, texts: list[str], lang: str,
+                          translate: Callable[[list[str], str], list[str]],
+                          chunk: int = 64, progress: bool = True) -> int:
+        """Translate texts not yet cached; returns how many were added."""
+        todo = self.missing(texts, lang)
+        steps = range(0, len(todo), chunk)
+        if progress and todo:
+            from tqdm.auto import tqdm
+
+            steps = tqdm(steps, desc=f"translate en->{lang}")
+        for i in steps:
+            src = todo[i : i + chunk]
+            write_jsonl(self.path(lang), [{"src": a, "tgt": b} for a, b in
+                                          zip(src, translate(src, lang))], append=True)
+        return len(todo)
 
 
 _TRANSLATORS: dict[str, Translator] = {}

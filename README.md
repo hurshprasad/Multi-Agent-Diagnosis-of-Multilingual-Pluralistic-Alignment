@@ -18,6 +18,7 @@ target models support them well (see `docs/decisions.md`, D0).
 | [`00_setup_and_smoke`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/00_setup_and_smoke.ipynb) | CPU | Install, mount Drive, run tests, run the agent lifecycle on synthetic data |
 | [`01_generate`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/01_generate.ipynb) | GPU | Generate model outputs into the shared cache on Drive |
 | [`02_phase0_decisions`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/02_phase0_decisions.ipynb) | T4 GPU | Evidence for D1 (datasets), D4 (MT model comparison), D7 (oracle sheet format) |
+| [`03_build_dataset`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/03_build_dataset.ipynb) | T4 GPU | Build the parallel evaluation set: fetch sources, translate, assemble items, verification sheets, tune/test split |
 
 Every notebook starts with the same setup cell: clone or pull the repo, `pip install -e`,
 mount Drive. All artifacts go to `MyDrive/mpac/`, so nothing is lost when a runtime resets,
@@ -69,7 +70,7 @@ tests/
 
 **Working now:** config, Drive-aware paths, generation cache, generation backend, ACS,
 agent registry, adaptive coordinator, single and fixed baselines, detection metrics,
-synthetic data, tests. **Phase 0 (proposed, see `docs/decisions.md`):** tune/test splits, oracle labelling tools, MT candidates + round-trip comparison. **Stubs with TODOs:** dataset loader, DPO, LLM judge,
+synthetic data, tests. **Phase 0 (proposed, see `docs/decisions.md`):** tune/test splits, oracle labelling tools, MT candidates + round-trip comparison. Dataset build (`data/build.py`: PLURAL / TruthfulQA / UltraFeedback → translated parallel items) and translation verification. **Stubs with TODOs:** DPO, LLM judge,
 interpretability, safety.
 
 ## Team

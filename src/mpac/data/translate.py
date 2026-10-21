@@ -67,17 +67,22 @@ class Translator:
         self.batch_size = batch_size
         self.max_new_tokens = max_new_tokens
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        # T5-family models (MADLAD) overflow in fp16, and a T4 has no bf16, so use fp32 there
-        # (3B params ~ 12 GB, fits a 16 GB T4). NLLB is fine in fp16.
-        if self.device == "cuda" and torch.cuda.is_bf16_supported():
+        # T5-family models (MADLAD) overflow in fp16, and a T4 has no native bf16 (newer torch
+        # reports it as supported via slow emulation), so use fp32 there (3B params ~ 12 GB,
+        # fits a 16 GB T4). NLLB is fine in fp16.
+        native_bf16 = self.device == "cuda" and torch.cuda.get_device_capability()[0] >= 8
+        if native_bf16:
             dtype = torch.bfloat16
         elif self.device == "cuda" and self.family == "nllb":
             dtype = torch.float16
         else:
             dtype = torch.float32
         self.tok = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=dtype)
-        self.model.to(self.device).eval()
+        # Load straight onto the device: 12 GB of fp32 weights staged in CPU RAM first would
+        # exhaust a free Colab VM (~12 GB RAM) and kill the runtime ("Failed to fetch").
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name, torch_dtype=dtype, low_cpu_mem_usage=True, device_map=self.device)
+        self.model.eval()
 
     def _translate_lines(self, lines: list[str], target_lang: str, source_lang: str) -> list[str]:
         import torch

@@ -149,3 +149,14 @@ def test_build_dataset_end_to_end_with_verification(cfg, tmp_path):
     assert loaded["wvs-A"].translation_verified == {"hi": True}
     verified = load_items(cfg, verified_only=True)
     assert all(set(it.prompts) == {"en", "hi"} for it in verified) and len(verified) == 2
+
+
+def test_read_sheet_accepts_excel_bom_and_semicolons(tmp_path):
+    path = tmp_path / "pt.csv"
+    path.write_text("﻿Item_ID;objective;ok;corrected\nuf-1;helpfulness;sim;\n",
+                    encoding="utf-8")
+    assert read_sheet(path) == [{"item_id": "uf-1", "objective": "helpfulness",
+                                 "ok": "sim", "corrected": ""}]
+    path.write_text("id,ok\nuf-1,yes\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no item_id column"):
+        read_sheet(path)

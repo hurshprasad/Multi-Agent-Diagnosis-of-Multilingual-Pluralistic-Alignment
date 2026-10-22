@@ -65,8 +65,18 @@ def export_verification(items: list[ParallelItem], lang: str, ids: list[str], pa
 
 
 def read_sheet(path: str | Path) -> list[dict]:
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+    """Rows of a sheet, tolerant of how it was saved: Excel adds a BOM and, in pt/de/fr/es/it
+    locales, writes ';' instead of ','. Header names are stripped and lower-cased."""
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        text = f.read()
+    header = text.split("\n", 1)[0]
+    delim = max(",;\t", key=header.count)
+    rows = list(csv.DictReader(text.splitlines(keepends=True), delimiter=delim))
+    rows = [{(k or "").strip().lower(): (v or "") for k, v in r.items()} for r in rows]
+    if rows and "item_id" not in rows[0]:
+        raise ValueError(f"{path}: no item_id column (found {list(rows[0])}). Re-download it "
+                         f"from Google Sheets as CSV, keeping the header row {COLUMNS}.")
+    return rows
 
 
 def apply_verification(items: list[ParallelItem], lang: str, path: str | Path) -> dict[str, int]:

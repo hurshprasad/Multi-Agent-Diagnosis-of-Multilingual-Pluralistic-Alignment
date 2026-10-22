@@ -38,15 +38,16 @@ def embedding_divergence(u: Sequence[float], v: Sequence[float]) -> float:
     return float(np.clip(1.0 - cos, 0.0, 1.0))
 
 
-def item_divergence(ref, tgt, ref_emb=None, tgt_emb=None) -> float | None:
+def item_divergence(ref, tgt, ref_emb=None, tgt_emb=None, signal: str = "auto") -> float | None:
     """Divergence between a reference-language and target-language Generation for one item.
 
-    Uses option probabilities when both have them, otherwise embeddings if supplied.
-    Returns None when neither signal is available.
+    signal="auto" uses option probabilities when both have them, otherwise embeddings if
+    supplied; "options" or "embedding" use only that signal. Returns None when it's missing.
     """
-    if ref.option_probs is not None and tgt.option_probs is not None:
+    has_probs = ref.option_probs is not None and tgt.option_probs is not None
+    if has_probs and signal in ("auto", "options"):
         return js_divergence(ref.option_probs, tgt.option_probs)
-    if ref_emb is not None and tgt_emb is not None:
+    if ref_emb is not None and tgt_emb is not None and signal in ("auto", "embedding"):
         return embedding_divergence(ref_emb, tgt_emb)
     return None
 
@@ -56,12 +57,15 @@ def alignment_collapse_scores(
     objectives: dict[str, str],
     reference: str = "en",
     embeddings: dict[str, dict[str, Sequence[float]]] | None = None,
+    signal: str = "auto",
 ) -> dict[str, dict[str, float]]:
     """Compute ACS per target language, overall and per objective.
 
     gens:        lang -> item_id -> Generation
     objectives:  item_id -> objective name
     embeddings:  optional lang -> item_id -> response embedding
+    signal:      "auto", "options" or "embedding" (see item_divergence). JSD and embedding
+                 divergence are on different scales, so report them separately.
     Returns:     lang -> {"overall": acs, "<objective>": acs, "n": count}
     """
     embeddings = embeddings or {}
@@ -78,6 +82,7 @@ def alignment_collapse_scores(
                 ref[item_id], g,
                 embeddings.get(reference, {}).get(item_id),
                 embeddings.get(lang, {}).get(item_id),
+                signal,
             )
             if d is not None:
                 per_obj[objectives.get(item_id, "unknown")].append(d)

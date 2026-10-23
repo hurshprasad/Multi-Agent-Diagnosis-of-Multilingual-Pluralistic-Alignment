@@ -14,6 +14,7 @@ Then we check whether flagged cells show representation-level divergence (and wh
 interventions change it) and whether collapse predicts downstream safety problems.
 
 Proposal: `Experiment.docx` in the team's Claude Project. Open questions: `docs/decisions.md`.
+Results so far: `docs/results.md`.
 
 ## The seven systems
 

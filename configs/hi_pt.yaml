@@ -10,7 +10,7 @@ languages:
   reference: en
   targets: [hi, pt]              # pt: Brazilian Portuguese expected (D9); check in verification
 
-checkpoints: [base]              # add en_aligned / multi_aligned once DPO is trained
+checkpoints: [base, en_aligned, multi_aligned]   # aligned ones: notebooks/04_train_dpo.ipynb
 
 data:
   n_verified_per_lang: 100

@@ -57,10 +57,22 @@ oracle:                          # proposed protocol (D7, docs/oracle_protocol.m
   annotators_per_item: 2
   min_kappa: 0.6                 # below this, revise the guidelines before labelling more
 
-training:
+training:                        # training/dpo.py; identical for en_aligned and multi_aligned
   method: dpo
   use_lora: true
-  budget_steps: 1000             # identical for en_aligned and multi_aligned
+  n_pairs: 3000                  # PLURAL pairs, stratified over countries (D8, option b)
+  budget_steps: 375              # = 2 epochs of n_pairs at batch_size x grad_accum = 16
+  pool: 60000                    # random PLURAL rows the pairs are drawn from
+  max_words: 300                 # per response; Hindi needs ~2-3x the tokens of English
+  max_paragraph_words: 150       # MADLAD translates line by line (512-token input)
+  mt_batch_size: 32              # lines per MADLAD batch when translating pairs (16 on a T4)
+  beta: 0.1
+  learning_rate: 2.0e-5          # LoRA
+  batch_size: 1
+  grad_accum: 16
+  max_length: 1536               # prompt + response tokens, same for every language
+  save_steps: 25                 # checkpoint to Drive, resume after a disconnect
+  lora: {r: 16, alpha: 32, dropout: 0.05}
 
 agents:
   population_cap: 24

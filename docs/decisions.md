@@ -12,7 +12,7 @@ Record a decision here when the team settles it: what was chosen, why, and the d
 | D5 | LLM judge model | Open |
 | D6 | Safety / jailbreak benchmarks for the new languages | Open |
 | D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`) |
-| D8 | Which PLURAL pairs train en_aligned / multi_aligned? | Open |
+| D8 | Which PLURAL pairs train en_aligned / multi_aligned? | Open (pilot default: b) |
 | D9 | Portuguese and Spanish variants (pt-BR vs pt-PT, es-ES vs es-419) | Open |
 
 ## D0 · Language scope (decided)
@@ -147,6 +147,14 @@ conflict. Options:
 
 Whichever is chosen, en_aligned and multi_aligned use the same pairs (multi_aligned
 translated) and the same total count.
+
+- **Solo pilot default (2026-10-22, Hursh): (b)**, 3,000 pairs, no country conditioning
+  (`training/dpo.py`, `notebooks/04_train_dpo.ipynb`). Eval prompts are excluded by PLURAL id
+  and prompt text, and only one pair is kept per prompt. multi_aligned shows each pair in one
+  language, balanced overall and within each country (1,000 each of en / hi / pt). Responses
+  are capped at 300 words and `max_length` is 1,536 tokens for both checkpoints, because Qwen
+  needs about 2–3× the tokens for Hindi. Truncation is reported per language before training.
+  375 steps at effective batch 16 is 2 epochs.
 
 ## D9 · Language variants (open)
 

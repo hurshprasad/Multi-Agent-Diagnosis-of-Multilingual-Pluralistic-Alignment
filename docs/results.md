@@ -42,4 +42,34 @@ Reading:
 - **Portuguese doesn't collapse on honesty.** The option distribution shifts (ACS 0.16), but
   accuracy stays the same. This is the "good language support" control.
 
-**Free-text ACS (LaBSE)**: pending (notebook 01, "Free-text items" cell).
+**Free-text ACS (LaBSE)** (1 − cosine of LaBSE embeddings of the English and target
+responses; n = 240: 150 UltraFeedback helpfulness + 90 PLURAL). `prompt_floor` is the same
+divergence between the English prompt and its translation, i.e. what "same meaning, different
+language" scores for that language pair. Not on the same scale as the JSD table above.
+
+| | helpfulness | pluralistic_value (PLURAL) | overall | prompt_floor | overall − floor |
+|---|---|---|---|---|---|
+| hi | 0.343 (median 0.316) | 0.343 (median 0.334) | 0.343 | 0.140 | **0.20** |
+| pt | 0.223 (median 0.211) | 0.224 (median 0.216) | 0.223 | 0.103 | **0.12** |
+
+Checks:
+- Embeddings are healthy: per-item divergence std 0.12 (hi) / 0.09 (pt), range about 0–0.88;
+  mean similarity between *different* items 0.42–0.48 (not collapsed); sampled responses are
+  fluent text in the right language.
+- The near-identical helpfulness and PLURAL means were recomputed directly from item ids and
+  match; the medians differ, so the two groups have different distributions and the equal
+  means are a coincidence, not a grouping bug.
+
+Reading:
+- **Hindi free-text responses move further from English than Portuguese ones**, beyond what
+  translation alone explains (+0.20 vs +0.12 above the floor). Same ranking as the
+  forced-choice ACS and TruthfulQA results. Example: on a monoculture question English and
+  Portuguese give a direct summary, Hindi reframes it as a numbered "analysis and
+  recommendations" list.
+
+Caveats:
+- LaBSE reads only the first 256 tokens of each response.
+- Answering in the wrong language isn't detected yet (`language_match` is a TODO); it would
+  inflate divergence.
+- Whether embedding distance tracks alignment-relevant change rather than paraphrase is still
+  open (D2); validate against oracle labels on the tune split.

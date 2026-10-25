@@ -83,31 +83,49 @@ def select_pairs(rows: Iterable[dict], n: int, seed: int = 42, exclude_ids: set[
                             "prompt": r["prompt"].strip(), "chosen": r["pref"].strip(),
                             "rejected": r["dispref"].strip()})
     if len(out) < n:
-        raise ValueError(f"only {len(out)} usable pairs for n_pairs={n}; raise training.pool")
+        raise ValueError(f"only {len(out)} usable pairs for n_pairs={n}; raise training.pool "
+                         "(null = all of PLURAL) or relax training.max_words")
     return out
 
 
 def assign_languages(pairs: list[dict], langs: list[str]) -> list[dict]:
-    """Copy of pairs with a `lang`: languages cycle within each country, starting one
-    language later for each new country, so every country and the total are balanced."""
-    order: dict[str, int] = {}
-    seen: Counter = Counter()
-    out = []
-    for p in pairs:
-        c = order.setdefault(p["country"], len(order))
-        out.append({**p, "lang": langs[(seen[p["country"]] + c) % len(langs)]})
-        seen[p["country"]] += 1
-    return out
+    """Copy of pairs (same order) with a `lang`. Countries are taken in order of first
+    appearance and languages cycle through each country's pairs, carrying on from where the
+    previous country stopped, so every country is balanced and the totals differ by at most 1."""
+    by_country: dict[str, list[int]] = {}
+    for k, p in enumerate(pairs):
+        by_country.setdefault(p["country"], []).append(k)
+    lang_of, n = {}, 0
+    for idx in by_country.values():
+        for k in idx:
+            lang_of[k] = langs[n % len(langs)]
+            n += 1
+    return [{**p, "lang": lang_of[k]} for k, p in enumerate(pairs)]
+
+
+def usable_batch(batch: dict, max_words: int, max_paragraph_words: int) -> list[bool]:
+    """_usable over a column batch, for datasets.Dataset.filter(batched=True)."""
+    rows = [dict(zip(batch, vals)) for vals in zip(*batch.values())]
+    return [_usable(r, max_words, max_paragraph_words) for r in rows]
 
 
 def fetch_plural_rows(cfg: dict) -> list[dict]:
-    """A uniform random pool of PLURAL rows. The full split is downloaded once (~2 GB, memory
-    mapped); a global shuffle avoids the country/respondent ordering of the files."""
+    """PLURAL rows that fit the length limits, in a seeded random order, at most training.pool
+    of them (null = all). Most PLURAL responses are ~500 words, so only a few percent pass:
+    the whole split (~2 GB, memory mapped) is filtered before anything is loaded into memory."""
+    import os
+
     from datasets import load_dataset
 
     t = cfg["training"]
     ds = load_dataset(cfg["data"]["dataset"], split="train")
-    ds = ds.shuffle(seed=cfg["project"]["seed"]).select(range(min(t["pool"], len(ds))))
+    ds = ds.select_columns(["id", "country", "prompt", "pref", "dispref"])
+    ds = ds.filter(usable_batch, batched=True, num_proc=os.cpu_count() or 1,
+                   fn_kwargs={"max_words": t["max_words"],
+                              "max_paragraph_words": t["max_paragraph_words"]})
+    ds = ds.shuffle(seed=cfg["project"]["seed"])
+    if t.get("pool"):
+        ds = ds.select(range(min(t["pool"], len(ds))))
     return list(ds)
 
 
@@ -256,6 +274,7 @@ def train_dpo(cfg: dict, model: dict, checkpoint: str, pairs: list[dict]) -> str
     trainer.train(resume_from_checkpoint=True if resume else None)
     trainer.save_model(str(out))
     meta = {"checkpoint": checkpoint, "model": model, "n_pairs": len(pairs),
+            "steps": trainer.state.global_step,
             "langs": dict(Counter(p["lang"] for p in pairs)), "training": t,
             "seed": cfg["project"]["seed"], "gpu": torch.cuda.get_device_name(0)
             if torch.cuda.is_available() else "cpu", "bf16": bf16, "resumed": resume,

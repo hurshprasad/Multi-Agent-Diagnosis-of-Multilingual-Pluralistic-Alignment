@@ -155,6 +155,11 @@ translated) and the same total count.
   are capped at 300 words and `max_length` is 1,536 tokens for both checkpoints, because Qwen
   needs about 2–3× the tokens for Hindi. Truncation is reported per language before training.
   375 steps at effective batch 16 is 2 epochs.
+  Caveat (2026-10-25): PLURAL responses average ~500 words (pref median ~3,000 characters),
+  so only a few percent of rows pass the 300-word cap. A 60k random pool gave 1,050 usable
+  pairs; the pipeline now filters all ~484k rows first. The training pairs are therefore the
+  shortest few percent of PLURAL, the same for both checkpoints, so the en vs multi comparison
+  holds, but they are not representative of typical PLURAL response length.
 
 ## D9 · Language variants (open)
 

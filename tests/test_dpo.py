@@ -11,6 +11,7 @@ from mpac.training.dpo import (
     eval_exclusions,
     length_report,
     select_pairs,
+    usable_batch,
 )
 
 
@@ -58,6 +59,11 @@ def test_assign_languages_balances_languages_within_each_country():
     assert Counter(p["lang"] for p in mixed) == {"en": 3, "hi": 3, "pt": 3}
     for c in ("BR", "DE", "US"):
         assert {p["lang"] for p in mixed if p["country"] == c} == {"en", "hi", "pt"}
+    # Many countries with one or two pairs each (the quick run): totals still within 1.
+    rows = [_row(i, f"C{i % 20:02d}") for i in range(48)]
+    totals = Counter(p["lang"] for p in assign_languages(select_pairs(rows, 48, seed=1),
+                                                         ["en", "hi", "pt"]))
+    assert max(totals.values()) - min(totals.values()) <= 1
 
 
 @pytest.fixture
@@ -100,3 +106,9 @@ def test_length_report_flags_truncation_per_language():
 def test_adapter_dir(cfg, tmp_path):
     assert adapter_dir(cfg, "m", "base") is None
     assert adapter_dir(cfg, "m", "en_aligned") == tmp_path / "checkpoints" / "m" / "en_aligned"
+
+
+def test_usable_batch_matches_row_filter():
+    rows = [_row(0, "BR"), _row(1, "BR", words=400), {**_row(2, "BR"), "dispref": "good " * 20}]
+    batch = {k: [r[k] for r in rows] for k in rows[0]}
+    assert usable_batch(batch, max_words=300, max_paragraph_words=150) == [True, False, False]

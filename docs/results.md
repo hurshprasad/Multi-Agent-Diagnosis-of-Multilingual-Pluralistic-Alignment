@@ -73,3 +73,19 @@ Caveats:
   inflate divergence.
 - Whether embedding distance tracks alignment-relevant change rather than paraphrase is still
   open (D2); validate against oracle labels on the tune split.
+
+### DPO training (qwen2.5-7b), 2026-10-26
+
+Notebook 04, D8 pilot default (b): 3,000 PLURAL pairs, QLoRA r 16, β 0.1, lr 2e-5, effective
+batch 16, 375 steps (2 epochs), `max_length` 1,536, A100 80 GB. Same pairs, steps and seed
+for both checkpoints.
+
+| | pairs | languages | steps | final train loss | train reward accuracy |
+|---|---|---|---|---|---|
+| en_aligned | 3,000 | en 3,000 | 375 | 0.117 | 0.975 |
+| multi_aligned | 3,000 | en / hi / pt 1,000 each | 375 | 0.149 | 0.975 |
+
+These are training-set numbers (the second epoch repeats the pairs), not evaluation. Loss well
+below ln 2 = 0.693 means both runs fit their preferences; multi_aligned fits slightly less,
+as expected for translated text. Check the evaluations for drift: letter-start rate and
+fluency, not just ACS.

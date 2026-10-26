@@ -52,6 +52,34 @@ def item_divergence(ref, tgt, ref_emb=None, tgt_emb=None, signal: str = "auto") 
     return None
 
 
+def item_divergences(
+    gens: dict[str, dict[str, object]],
+    reference: str = "en",
+    embeddings: dict[str, dict[str, Sequence[float]]] | None = None,
+    signal: str = "auto",
+) -> dict[str, dict[str, float]]:
+    """target lang -> item_id -> divergence from the reference, for items scored by `signal`."""
+    embeddings = embeddings or {}
+    ref = gens[reference]
+    out: dict[str, dict[str, float]] = {}
+    for lang, by_item in gens.items():
+        if lang == reference:
+            continue
+        out[lang] = {}
+        for item_id, g in by_item.items():
+            if item_id not in ref:
+                continue
+            d = item_divergence(
+                ref[item_id], g,
+                embeddings.get(reference, {}).get(item_id),
+                embeddings.get(lang, {}).get(item_id),
+                signal,
+            )
+            if d is not None:
+                out[lang][item_id] = d
+    return out
+
+
 def alignment_collapse_scores(
     gens: dict[str, dict[str, object]],
     objectives: dict[str, str],
@@ -68,25 +96,12 @@ def alignment_collapse_scores(
                  divergence are on different scales, so report them separately.
     Returns:     lang -> {"overall": acs, "<objective>": acs, "n": count}
     """
-    embeddings = embeddings or {}
-    ref = gens[reference]
     out: dict[str, dict[str, float]] = {}
-    for lang, by_item in gens.items():
-        if lang == reference:
-            continue
+    for lang, divs in item_divergences(gens, reference, embeddings, signal).items():
         per_obj: dict[str, list[float]] = defaultdict(list)
-        for item_id, g in by_item.items():
-            if item_id not in ref:
-                continue
-            d = item_divergence(
-                ref[item_id], g,
-                embeddings.get(reference, {}).get(item_id),
-                embeddings.get(lang, {}).get(item_id),
-                signal,
-            )
-            if d is not None:
-                per_obj[objectives.get(item_id, "unknown")].append(d)
-        all_d = [d for ds in per_obj.values() for d in ds]
+        for item_id, d in divs.items():
+            per_obj[objectives.get(item_id, "unknown")].append(d)
+        all_d = list(divs.values())
         scores = {obj: float(np.mean(ds)) for obj, ds in per_obj.items()}
         scores["overall"] = float(np.mean(all_d)) if all_d else float("nan")
         scores["n"] = float(len(all_d))

@@ -40,6 +40,7 @@ def test_checkpoint_rows_cover_both_signals_objectives_and_truthfulqa():
     (gb, eb), (ga, ea) = ck("base", [0.2, 0.8], [0.0, 1.0]), ck("en_aligned", [0.9, 0.1], [1.0, 0.0])
     rows = checkpoint_rows({"base": gb, "en_aligned": ga}, {"base": eb, "en_aligned": ea}, items,
                            n_boot=200)
+    assert {(r["a"], r["b"]) for r in rows} == {("base", "en_aligned")}
     by = {(r["lang"], r["metric"], r["objective"]): r for r in rows}
     assert by[("hi", "acs_forced_choice", "honesty")]["diff"] < 0
     assert math.isclose(by[("hi", "acs_free_text", "helpfulness")]["diff"], -1.0)

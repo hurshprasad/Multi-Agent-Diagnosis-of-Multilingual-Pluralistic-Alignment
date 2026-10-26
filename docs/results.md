@@ -89,3 +89,42 @@ These are training-set numbers (the second epoch repeats the pairs), not evaluat
 below ln 2 = 0.693 means both runs fit their preferences; multi_aligned fits slightly less,
 as expected for translated text. Check the evaluations for drift: letter-start rate and
 fluency, not just ACS.
+
+### DPO effect: checkpoint vs checkpoint (qwen2.5-7b), 2026-10-26
+
+`analysis/compare.py`, notebook 01 last cell: same items, item by item. diff = later − earlier;
+for ACS **negative = less collapse**. 95% paired bootstrap CI, sign-flip permutation p
+(TruthfulQA: exact McNemar on flips). About 45 rows per comparison are tested, so single
+p ≈ 0.03–0.05 results are weak evidence; Bonferroni over 45 is p < 0.0011.
+
+Hindi, all items:
+
+| metric | base → en_aligned | base → multi_aligned | en_aligned → multi_aligned |
+|---|---|---|---|
+| forced-choice ACS, overall (n 261) | +0.011 [0.001, 0.023], p 0.04 | +0.007 [−0.005, 0.018], p 0.24 | −0.005 [−0.014, 0.005], p 0.35 |
+| forced-choice ACS, honesty (150) | +0.010, p 0.09 | +0.000, p 1.0 | −0.010 [−0.022, 0.000], p 0.09 |
+| forced-choice ACS, pluralistic_value (111) | +0.014, p 0.21 | +0.016, p 0.12 | +0.003, p 0.75 |
+| free-text ACS, PLURAL (90) | +0.015 [0.002, 0.028], p 0.03 | **+0.026 [0.010, 0.042], p 0.002** | +0.010, p 0.19 |
+| free-text ACS, helpfulness (150) | −0.007, p 0.23 | −0.007, p 0.27 | 0.000, p 0.99 |
+| TruthfulQA accuracy, hi | 0.500 → 0.467 (5 lost / 0), p 0.06 | 0.500 → 0.487 (3 / 1), p 0.63 | 0.467 → 0.487 (0 / 3), p 0.25 |
+| TruthfulQA accuracy, en | 0.673 → 0.667 | 0.673 → 0.680 | 0.667 → 0.680 |
+
+Portuguese: every ACS change is within ±0.012 and no TruthfulQA change exceeds 2 items. The
+only p < 0.05 are forced-choice honesty base → multi_aligned (+0.012, p 0.045) and, on the
+verified subset only, PLURAL free text en_aligned → multi_aligned (+0.031, n 17, p 0.02).
+Verified subset (hi n ≈ 33–51 per row): nothing significant, same directions.
+
+Reading:
+- **Neither DPO run reduced Hindi collapse, and multilingual training did not beat
+  English-only training at the same budget.** en_aligned → multi_aligned is within noise
+  everywhere; the largest hints are in the expected direction (honesty ACS −0.010, Hindi
+  TruthfulQA +3 items, 0 lost) but none is significant.
+- **The one robust change goes the other way:** Hindi responses to PLURAL prompts move
+  *further* from the English ones after DPO (+0.026 for multi_aligned, the only row near the
+  Bonferroni bar), which is the objective the pairs trained. ACS measures distance from the
+  English response, so this can mean Hindi responses changed, or English ones changed and
+  Hindi didn't follow; check by comparing each language's responses with its own base.
+- **All effects are small (≤ 0.026 against base ACS of 0.34–0.40).** Training loss fell to
+  0.12–0.15, but eval behaviour barely moved, even in English (TruthfulQA ±1 item). Before
+  concluding that multilingual alignment doesn't help, check that DPO changed preferences on
+  held-out PLURAL pairs at all (manipulation check, per language).

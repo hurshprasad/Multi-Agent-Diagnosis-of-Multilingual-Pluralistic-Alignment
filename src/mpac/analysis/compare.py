@@ -2,6 +2,7 @@
 
 Owner: signals/eval track.
 
+Rows are keyed by checkpoint names a and b; mean_a / mean_b are the two checkpoints' values.
 The per-checkpoint tables (results.py) compare each language against English. This module
 compares two checkpoints on the same items, item by item:
 - paired_difference()   change in mean ACS (b − a) over items scored in both, with a paired
@@ -33,8 +34,8 @@ def paired_difference(a: dict[str, float], b: dict[str, float], n_boot: int = 10
     boots = d[rng.integers(0, len(d), (n_boot, len(d)))].mean(axis=1)
     flips = (rng.choice([-1.0, 1.0], (n_boot, len(d))) * d).mean(axis=1)
     p = (1 + np.sum(np.abs(flips) >= abs(d.mean()) - 1e-12)) / (n_boot + 1)
-    return {"n": len(ids), "a": float(np.mean([a[i] for i in ids])),
-            "b": float(np.mean([b[i] for i in ids])), "diff": float(d.mean()),
+    return {"n": len(ids), "mean_a": float(np.mean([a[i] for i in ids])),
+            "mean_b": float(np.mean([b[i] for i in ids])), "diff": float(d.mean()),
             "ci_low": float(np.percentile(boots, 2.5)), "ci_high": float(np.percentile(boots, 97.5)),
             "p": float(min(1.0, p))}
 
@@ -55,7 +56,7 @@ def correctness_flips(gens_a: dict, gens_b: dict, items: list) -> dict[str, floa
     lost = sum(ra[i] and not rb[i] for i in ids)
     gained = sum(rb[i] and not ra[i] for i in ids)
     acc_a, acc_b = np.mean([ra[i] for i in ids]), np.mean([rb[i] for i in ids])
-    return {"n": len(ids), "a": float(acc_a), "b": float(acc_b), "diff": float(acc_b - acc_a),
+    return {"n": len(ids), "mean_a": float(acc_a), "mean_b": float(acc_b), "diff": float(acc_b - acc_a),
             "lost": lost, "gained": gained, "p": mcnemar_exact(lost, gained)}
 
 

@@ -108,9 +108,24 @@ class Agent(ABC):
 
 
 class LightweightAgent(Agent):
-    """Scores divergence with cheap signals only (option-distribution JSD or embeddings)."""
+    """Scores divergence with cheap signals only (option-distribution JSD or embeddings).
+
+    thresholds: optional (lang, kind) -> collapse threshold (signals/calibration.py), kind =
+    "options" or "embedding"; falls back to spec.collapse_threshold. lang_ids: optional lang ->
+    item_id -> detected language of free-text responses (signals/lightweight.detect_languages);
+    a target response not in its prompt's language, when the English one is in English, is
+    flagged as collapse whatever its divergence.
+    """
+
+    def __init__(self, spec: AgentSpec, thresholds: dict | None = None,
+                 lang_ids: dict | None = None):
+        super().__init__(spec)
+        self.thresholds = thresholds or {}
+        self.lang_ids = lang_ids or {}
 
     def evaluate(self, item, gens, embeddings=None):
+        from mpac.signals.calibration import signal_kind
+
         s = self.spec
         if not s.covers(item):
             return None
@@ -124,15 +139,24 @@ class LightweightAgent(Agent):
                             emb.get(s.lang, {}).get(item.item_id))
         if d is None:
             return None
+        kind = signal_kind(a, b)
+        threshold = s.collapse_threshold
+        if s.kind == "specialist":
+            threshold = self.thresholds.get((s.lang, kind), threshold)
+        collapse = d > threshold
+        evidence = f"divergence({base_lang}->{s.lang})={d:.3f} vs {threshold:.3f} [{kind}]"
+        got = self.lang_ids.get(s.lang, {}).get(item.item_id)
+        if (s.kind == "specialist" and got is not None and got != s.lang
+                and self.lang_ids.get(base_lang, {}).get(item.item_id, base_lang) == base_lang):
+            collapse, evidence = True, f"answered in {got}, not {s.lang}; " + evidence
         return Evaluation(self.agent_id, item.item_id, s.lang, item.objective, d,
-                          collapse=d > s.collapse_threshold,
-                          evidence=f"divergence({base_lang}->{s.lang})={d:.3f}",
-                          compared_to=base_lang)
+                          collapse=collapse, evidence=evidence, compared_to=base_lang)
 
 
-def build_agent(spec: AgentSpec) -> Agent:
+def build_agent(spec: AgentSpec, thresholds: dict | None = None,
+                lang_ids: dict | None = None) -> Agent:
     if spec.signal == "divergence":
-        return LightweightAgent(spec)
+        return LightweightAgent(spec, thresholds, lang_ids)
     if spec.signal == "llm_judge":
         from mpac.baselines.llm_judge import LLMJudgeAgent
 

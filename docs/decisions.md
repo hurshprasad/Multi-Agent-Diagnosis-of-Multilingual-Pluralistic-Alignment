@@ -91,8 +91,18 @@ Implemented in `agents/coordinator.py`:
 `utility = 0.8 × oracle accuracy on labelled items in the batch + 0.2 × novelty`, where
 novelty is the share of an agent's collapse flags that no other agent raised.
 Destroy after 2 consecutive cycles below 0.6, or if redundant with a same-scope agent
-(> 0.95 verdict agreement). Spawn a specialist for any (language, objective) cell whose mean
-divergence exceeds 0.15. Population cap 24.
+(> 0.95 verdict agreement). Spawn a specialist for any (language, objective) cell where more
+than 15% of evaluations flag collapse (`agents.spawn_on_flag_rate`). Population cap 24.
+
+**Thresholds per language (2026-10-27, solo pilot).** A single collapse threshold doesn't fit
+embedding divergence: LaBSE puts Hindi translations further from English than Portuguese ones
+(prompt floor 0.14 vs 0.10), so every Hindi cell looked collapsed. Thresholds are now keyed by
+(language, signal kind) (`signals/calibration.py`): forced choice starts at JSD 0.3, free text
+at the language's floor + 0.15, and each is tuned on **tune**-split oracle labels (best
+balanced accuracy) when a cell has at least 6 labels of both classes. The spawn rule was
+changed from mean raw divergence > 0.15 to flag rate > 0.15 for the same reason. All systems
+in Table 6 get the same thresholds, so calibration isn't what separates them. Responses that
+aren't in the prompt's language (fastText language ID) are flagged as collapse.
 
 Open: the oracle signal depends on how many labelled items fall in each batch. If labels are
 sparse, consider a label-free utility (e.g. stability of the agent's divergence estimate)

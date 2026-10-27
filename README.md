@@ -19,6 +19,8 @@ target models support them well (see `docs/decisions.md`, D0).
 | [`01_generate`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/01_generate.ipynb) | GPU | Generate model outputs into the shared cache on Drive |
 | [`02_phase0_decisions`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/02_phase0_decisions.ipynb) | T4 GPU | Evidence for D1 (datasets), D4 (MT model comparison), D7 (oracle sheet format) |
 | [`03_build_dataset`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/03_build_dataset.ipynb) | T4 GPU | Build the parallel evaluation set: fetch sources, translate, assemble items, verification sheets, tune/test split |
+| [`04_train_dpo`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/04_train_dpo.ipynb) | L4 / A100 GPU | DPO + LoRA for en_aligned and multi_aligned (same budget), plus the held-out preference check |
+| [`05_oracle_and_evaluators`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/05_oracle_and_evaluators.ipynb) | CPU | Oracle labelling sheets and agreement, then Table 6: evaluator systems on the same outputs |
 
 Every notebook starts with the same setup cell: clone or pull the repo, `pip install -e`,
 mount Drive. All artifacts go to `MyDrive/mpac/`, so nothing is lost when a runtime resets,

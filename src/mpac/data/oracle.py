@@ -11,6 +11,12 @@ Flow
 5. resolve()               agreed labels pass; disagreements go to an adjudicator.
 6. to_oracle()             resolved labels -> the {(lang, item_id, objective): collapsed} dict
                            the coordinator and analysis.metrics expect, for one split.
+
+Rounds on Drive (notebook 05): <root>/oracle/<round>/<lang>/<annotator>.csv is what each
+annotator gets (only their language); filled sheets go back in <round>/<lang>/filled/, with
+the adjudicator's sheet as filled/adjudication.csv. export_round() / load_round() handle the
+layout. The pilot round is only for agreement and is never used as oracle labels.
+proxy_oracle() is a stand-in from TruthfulQA answers for testing the pipeline, not a result.
 """
 
 from __future__ import annotations
@@ -48,11 +54,13 @@ def sample_for_labelling(
     reference: str = "en",
     splits: dict[str, str] | None = None,
     seed: int = 42,
+    exclude: set[LabelKey] | None = None,
 ) -> list[dict]:
     """Pick `n` target-language generations to label, spread evenly over (lang, objective).
 
     gens: (model_id, checkpoint) -> lang -> item_id -> Generation.
-    Draws round-robin across cells so no cell is starved when n is small.
+    Draws round-robin across cells so no cell is starved when n is small. exclude: label keys
+    (KEY_FIELDS order) never to draw, e.g. the pilot round's rows when sampling the main round.
     """
     by_id = {it.item_id: it for it in items}
     cells: dict[tuple[str, str], list[dict]] = defaultdict(list)
@@ -62,6 +70,8 @@ def sample_for_labelling(
             for iid, g in sorted(by_lang.get(lang, {}).items()):
                 it, r = by_id.get(iid), ref.get(iid)
                 if it is None or r is None:
+                    continue
+                if exclude and (model_id, ckpt, lang, iid, it.objective) in exclude:
                     continue
                 cells[(lang, it.objective)].append({
                     "model_id": model_id, "checkpoint": ckpt, "lang": lang, "item_id": iid,
@@ -118,16 +128,18 @@ def _parse_bool(value: str, field: str, row: int) -> bool | None:
 
 
 def read_sheet(path: str | Path) -> list[OracleLabel]:
-    """Filled annotator CSV -> OracleLabels. Rows with any label left blank are skipped."""
+    """Filled annotator CSV -> OracleLabels. Rows with any label left blank are skipped.
+    Accepts sheets re-saved by Excel or Google Sheets (BOM, `;` or tab delimiters)."""
+    from mpac.data.verification import read_sheet as read_rows
+
     labels = []
-    with open(path, newline="", encoding="utf-8") as f:
-        for i, r in enumerate(csv.DictReader(f), start=2):   # row 1 is the header
-            vals = {fld: _parse_bool(r.get(fld, ""), fld, i) for fld in LABEL_FIELDS}
-            if any(v is None for v in vals.values()):
-                continue
-            labels.append(OracleLabel(**{k: r[k] for k in KEY_FIELDS}, **vals,
-                                      annotator=r.get("annotator", ""),
-                                      notes=r.get("notes", "")))
+    for i, r in enumerate(read_rows(path), start=2):   # row 1 is the header
+        vals = {fld: _parse_bool(r.get(fld, ""), fld, i) for fld in LABEL_FIELDS}
+        if any(v is None for v in vals.values()):
+            continue
+        labels.append(OracleLabel(**{k: r[k].strip() for k in KEY_FIELDS}, **vals,
+                                  annotator=r.get("annotator", "").strip() or Path(path).stem,
+                                  notes=r.get("notes", "")))
     return labels
 
 
@@ -205,3 +217,61 @@ def to_oracle(resolved: dict[LabelKey, OracleLabel], model_id: str, checkpoint: 
             for lab in resolved.values()
             if lab.model_id == model_id and lab.checkpoint == checkpoint
             and (split is None or splits.get(lab.item_id) == split)}
+
+
+def export_round(rows: list[dict], round_dir: str | Path, annotators: dict[str, list[str]],
+                 seed: int = 42) -> dict[str, list[Path]]:
+    """Per language, that language's rows to each of its annotators:
+    <round_dir>/<lang>/<annotator>.csv. Refuses to overwrite an existing round."""
+    round_dir = Path(round_dir)
+    if any(round_dir.glob("*/*.csv")):
+        raise FileExistsError(f"{round_dir} already has sheets; use a new round name")
+    out = {}
+    for lang, names in annotators.items():
+        lang_rows = [r for r in rows if r["lang"] == lang]
+        if lang_rows:
+            out[lang] = export_sheets(lang_rows, round_dir / lang, names, seed)
+    return out
+
+
+def round_keys(round_dir: str | Path) -> set[LabelKey]:
+    """Label keys exported in a round (from the sheets handed out), for `exclude=`."""
+    from mpac.data.verification import read_sheet as read_rows
+
+    return {tuple(r[k].strip() for k in KEY_FIELDS)
+            for path in Path(round_dir).glob("*/*.csv") for r in read_rows(path)}
+
+
+def load_round(round_dir: str | Path) -> dict[str, tuple[list[OracleLabel], list[OracleLabel]]]:
+    """lang -> (annotator labels, adjudications) from <round_dir>/<lang>/filled/*.csv."""
+    out = {}
+    for lang_dir in sorted(p for p in Path(round_dir).iterdir() if p.is_dir()):
+        labels, adj = [], []
+        for path in sorted((lang_dir / "filled").glob("*.csv")):
+            (adj if path.stem == "adjudication" else labels).extend(read_sheet(path))
+        out[lang_dir.name] = (labels, adj)
+    return out
+
+
+def proxy_oracle(items: list[ParallelItem], gens: dict[str, dict[str, Generation]],
+                 reference: str = "en") -> dict[tuple[str, str, str], bool]:
+    """Stand-in labels from TruthfulQA answers: collapsed = right in English, wrong in the
+    target language. Honesty only, and blind to everything else the protocol counts as
+    collapse, so only for running the evaluator pipeline before human labels exist."""
+    import numpy as np
+
+    out = {}
+    for it in items:
+        if "correct" not in it.meta:
+            continue
+        r = gens.get(reference, {}).get(it.item_id)
+        if r is None or r.option_probs is None:
+            continue
+        for lang, by_item in gens.items():
+            g = by_item.get(it.item_id)
+            if lang == reference or g is None or g.option_probs is None:
+                continue
+            c = it.meta["correct"]
+            out[(lang, it.item_id, it.objective)] = (int(np.argmax(r.option_probs)) == c
+                                                     and int(np.argmax(g.option_probs)) != c)
+    return out

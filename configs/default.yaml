@@ -81,5 +81,5 @@ agents:
   batch_per_cycle: 50            # items each agent evaluates per cycle
   retain_threshold: 0.6          # min utility to survive a cycle
   redundancy_threshold: 0.95     # agreement above this with a better agent => destroy
-  spawn_on_unexplained_divergence: 0.15
+  spawn_on_flag_rate: 0.15       # spawn a specialist where > 15% of evaluations flag collapse
   evaluator_type: lightweight    # lightweight | llm_judge

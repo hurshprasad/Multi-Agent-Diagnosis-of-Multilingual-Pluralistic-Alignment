@@ -11,9 +11,12 @@ One cycle:
               - same scope (languages + objective) as a higher-utility agent and collapse
                 verdicts agree > redundancy_threshold on shared items -> destroy (redundant)
               - destroyed agents can't be respawned for `patience` cycles (no churn)
-  4. SPAWN    for every (lang, objective) cell whose mean divergence exceeds
-              spawn_on_unexplained_divergence and has no live specialist, spawn one; when two
+  4. SPAWN    for every (lang, objective) cell where the share of collapse flags exceeds
+              spawn_on_flag_rate and there is no live specialist, spawn one; when two
               target languages both diverge, spawn a consistency agent between them.
+              Flags, not raw divergence: flags use per-language thresholds, raw divergence
+              doesn't (LaBSE puts every Hindi response further from English than a
+              Portuguese one), so a raw cut would call every Hindi cell hot.
               Population never exceeds population_cap.
 
 All decisions use cheap numbers, never an LLM. The LLM-as-judge baseline swaps the agents'
@@ -58,6 +61,8 @@ class LifecycleCoordinator:
         registry: AgentRegistry | None = None,
         patience: int = 2,
         novelty_weight: float = 0.2,
+        thresholds: dict | None = None,
+        lang_ids: dict | None = None,
     ):
         a = cfg["agents"]
         self.cap = a["population_cap"]
@@ -65,7 +70,7 @@ class LifecycleCoordinator:
         self.batch = a["batch_per_cycle"]
         self.retain_threshold = a["retain_threshold"]
         self.redundancy_threshold = a["redundancy_threshold"]
-        self.spawn_threshold = a["spawn_on_unexplained_divergence"]
+        self.spawn_threshold = a["spawn_on_flag_rate"]
         self.signal = "llm_judge" if a.get("evaluator_type") == "llm_judge" else "divergence"
         self.reference = cfg["languages"]["reference"]
         self.targets = cfg["languages"]["targets"]
@@ -73,6 +78,8 @@ class LifecycleCoordinator:
         self.gens = gens
         self.oracle = oracle or {}
         self.embeddings = embeddings
+        self.thresholds = thresholds
+        self.lang_ids = lang_ids
         self.registry = registry or AgentRegistry()
         self.patience = patience
         self.novelty_weight = novelty_weight
@@ -92,7 +99,7 @@ class LifecycleCoordinator:
     def _evaluate(self, cycle: int) -> dict[str, list[Evaluation]]:
         out: dict[str, list[Evaluation]] = {}
         for st in self.registry.alive():
-            agent = build_agent(st.spec)
+            agent = build_agent(st.spec, self.thresholds, self.lang_ids)
             scope = [it for it in self.items if st.spec.covers(it)]
             batch = self.rng.sample(scope, min(self.batch, len(scope)))
             evals = [e for it in batch if (e := agent.evaluate(it, self.gens, self.embeddings))]
@@ -187,7 +194,7 @@ class LifecycleCoordinator:
         for es in evals.values():
             for e in es:
                 if e.compared_to == self.reference:
-                    cell[(e.lang, e.objective)].append(e.divergence)
+                    cell[(e.lang, e.objective)].append(float(e.collapse))
         hot = sorted(((np.mean(v), k) for k, v in cell.items() if np.mean(v) > self.spawn_threshold),
                      reverse=True)
         for _, (lang, obj) in hot:

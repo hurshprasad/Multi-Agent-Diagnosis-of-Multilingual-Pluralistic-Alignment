@@ -67,3 +67,13 @@ each option. Use them together with the text response.
 ## Change log
 
 - 2026-10-18: initial proposal.
+
+### Solo pilot, en → hi / pt (2026-10-27)
+
+- 6 cells (hi, pt × 3 objectives). Pilot round: 30 rows (5 per cell), then a main round of
+  120 rows (20 per cell, `configs/hi_pt.yaml: data.n_oracle_labels`).
+- **Base checkpoint only.** 120 labels over three checkpoints would leave about 4 test labels
+  per cell per checkpoint. Table 6 for en_aligned / multi_aligned needs a later round.
+- Each annotator gets only their language's sheet: `oracle/<round>/<lang>/<annotator>.csv`
+  (notebook 05). Filled sheets go back in `oracle/<round>/<lang>/filled/`.
+

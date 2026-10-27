@@ -136,3 +136,39 @@ Reading:
   0.12–0.15, but eval behaviour barely moved, even in English (TruthfulQA ±1 item). Before
   concluding that multilingual alignment doesn't help, check that DPO changed preferences on
   held-out PLURAL pairs at all (manipulation check, per language).
+
+### Manipulation check: preferences on held-out PLURAL pairs (qwen2.5-7b), 2026-10-26
+
+`training/heldout.py`, notebook 04 step 4. 200 PLURAL pairs used neither in training nor in
+the eval set, the same pairs in en / hi / pt (hi / pt by MADLAD, like training). Accuracy =
+share of pairs where the DPO implicit reward against base (β 0.1) prefers the chosen response;
+0.5 = nothing learned. All single-checkpoint rows p < 0.0001 against 0.5.
+
+| | en | hi | pt |
+|---|---|---|---|
+| en_aligned: accuracy (mean margin) | 0.945 (3.33) | 0.780 (0.61) | 0.925 (1.78) |
+| multi_aligned: accuracy (mean margin) | 0.930 (2.63) | 0.860 (1.48) | 0.920 (2.08) |
+| multi − en: accuracy, McNemar p | −0.015, p 0.25 | **+0.080, p 0.014** | −0.005, p 1.0 |
+| multi − en: margin [95% CI] | −0.71 [−0.82, −0.59] | **+0.87 [0.71, 1.03]** | +0.30 [0.21, 0.39] |
+
+Reading:
+- **Training took, and generalises to unseen pairs**: en_aligned prefers the chosen response
+  on 94.5% of held-out English pairs.
+- **English-only alignment transfers much less to Hindi than to Portuguese**: margin 0.61 in
+  hi vs 1.78 in pt vs 3.33 in en; accuracy 0.78 vs 0.93. The same language ranking as the
+  base-model collapse (ACS, TruthfulQA), now at the level of learned preferences.
+- **Training in Hindi closes most of that gap** (margin 0.61 → 1.48, accuracy +8 points) at the
+  cost of some English margin (3.33 → 2.63), as expected from a fixed budget with 1/3 the
+  English pairs.
+- **But Hindi eval behaviour did not move toward English** (previous section: no ACS reduction,
+  PLURAL free-text divergence +0.026 vs base). So multi_aligned learned the preferences in
+  Hindi without its Hindi responses converging on its English ones: learning preferences in a
+  language is not the same as removing collapse. Candidate explanations to test:
+  (1) the eval tasks (WVS, TruthfulQA, UltraFeedback) are off the PLURAL training
+  distribution, but PLURAL free text is on it and diverged most; (2) implicit-reward
+  preferences don't show up in greedy generations; (3) ACS is distance from the English
+  response, so English and Hindi responses may each move, in different directions; compare
+  each language with its own base responses.
+- Caveat: held-out hi / pt pairs are machine-translated by the same MT model as the training
+  pairs, so multi_aligned's Hindi gain may partly be familiarity with MADLAD's Hindi. Chosen
+  and rejected are both translated, which cancels style shared by both, but not all of it.

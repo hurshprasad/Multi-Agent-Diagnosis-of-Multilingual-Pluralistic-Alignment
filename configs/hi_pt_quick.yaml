@@ -24,6 +24,7 @@ data:
 
 training:                        # a few steps on 1.5B, to check the DPO pipeline on a T4
   n_pairs: 48
+  n_heldout: 12
   budget_steps: 6
   pool: 3000
   mt_batch_size: 16

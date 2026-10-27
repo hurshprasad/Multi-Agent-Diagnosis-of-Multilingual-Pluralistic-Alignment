@@ -62,6 +62,7 @@ training:                        # training/dpo.py; identical for en_aligned and
   use_lora: true
   n_pairs: 3000                  # PLURAL pairs, stratified over countries (D8, option b)
   budget_steps: 375              # = 2 epochs of n_pairs at batch_size x grad_accum = 16
+  n_heldout: 200                 # held-out PLURAL pairs, in every language, for the manipulation check
   pool: null                     # cap on length-filtered PLURAL rows to draw from (null = all)
   max_words: 300                 # per response; Hindi needs ~2-3x the tokens of English
   max_paragraph_words: 150       # MADLAD translates line by line (512-token input)

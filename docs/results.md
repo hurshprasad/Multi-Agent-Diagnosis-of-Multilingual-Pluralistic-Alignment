@@ -97,6 +97,14 @@ for ACS **negative = less collapse**. 95% paired bootstrap CI, sign-flip permuta
 (TruthfulQA: exact McNemar on flips). About 45 rows per comparison are tested, so single
 p ≈ 0.03–0.05 results are weak evidence; Bonferroni over 45 is p < 0.0011.
 
+Per checkpoint (each vs English, all items):
+
+| | forced-choice ACS hi / pt | free-text ACS hi / pt | TruthfulQA en → hi | en → pt |
+|---|---|---|---|---|
+| base | 0.401 / 0.233 | 0.343 / 0.223 | 0.673 → 0.500 | 0.673 → 0.687 |
+| en_aligned | 0.412 / 0.235 | 0.344 / 0.218 | 0.667 → 0.467 | 0.667 → 0.680 |
+| multi_aligned | 0.408 / 0.236 | 0.348 / 0.217 | 0.680 → 0.487 | 0.680 → 0.693 |
+
 Hindi, all items:
 
 | metric | base → en_aligned | base → multi_aligned | en_aligned → multi_aligned |

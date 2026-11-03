@@ -56,6 +56,12 @@ translation:
 oracle:                          # proposed protocol (D7, docs/oracle_protocol.md)
   annotators_per_item: 2
   min_kappa: 0.6                 # below this, revise the guidelines before labelling more
+  llm_panel:                     # LLM annotators when there are no people (data/llm_oracle.py)
+    annotators:                  # two families; neither may be the System 6 judge (D5)
+      opus: claude-opus-5-5
+      llama: meta-llama/Llama-3.3-70B-Instruct
+    adjudicator: {sonnet: claude-sonnet-5-5}
+    effort: high                 # Claude reasoning effort for labelling
 
 training:                        # training/dpo.py; identical for en_aligned and multi_aligned
   method: dpo

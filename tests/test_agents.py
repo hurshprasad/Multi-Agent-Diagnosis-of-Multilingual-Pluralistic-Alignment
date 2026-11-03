@@ -95,13 +95,16 @@ def test_tune_thresholds_uses_labels_and_keeps_start_when_too_few():
 
     start = floor_thresholds(["hi", "pt"], {"hi": 0.14, "pt": 0.10})
     assert abs(start[("hi", "embedding")] - 0.29) < 1e-9 and start[("pt", "options")] == 0.3
-    divs = {("hi", "embedding"): {f"i{k}": 0.1 * k for k in range(10)},
-            ("pt", "embedding"): {"j0": 0.5, "j1": 0.1}}
-    oracle = {("hi", f"i{k}", "helpfulness"): k >= 6 for k in range(10)}
+    divs = {("hi", "embedding"): {f"i{k}": 0.05 * k for k in range(14)},
+            ("pt", "embedding"): {"j0": 0.5, "j1": 0.1},
+            ("pt", "options"): {f"o{k}": 0.01 * k for k in range(50)}}
+    oracle = {("hi", f"i{k}", "helpfulness"): k >= 6 for k in range(14)}   # 8 collapsed, 6 not
     oracle |= {("pt", "j0", "helpfulness"): True, ("pt", "j1", "helpfulness"): False}
+    oracle |= {("pt", f"o{k}", "honesty"): k == 49 for k in range(50)}    # 1 collapsed of 50
     th, rep = tune_thresholds(divs, oracle, start)
-    assert 0.5 < th[("hi", "embedding")] < 0.6 and rep[("hi", "embedding")]["source"] == "tuned"
+    assert 0.25 < th[("hi", "embedding")] < 0.3 and rep[("hi", "embedding")]["source"] == "tuned"
     assert th[("pt", "embedding")] == start[("pt", "embedding")]   # 2 labels: too few
+    assert th[("pt", "options")] == start[("pt", "options")]       # 50 labels, 1 positive: too few
 
 
 def test_language_match_and_detect_languages_skip_forced_choice():

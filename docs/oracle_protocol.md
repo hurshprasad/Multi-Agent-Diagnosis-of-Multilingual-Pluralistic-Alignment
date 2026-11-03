@@ -77,3 +77,28 @@ each option. Use them together with the text response.
 - Each annotator gets only their language's sheet: `oracle/<round>/<lang>/<annotator>.csv`
   (notebook 05). Filled sheets go back in `oracle/<round>/<lang>/filled/`.
 
+
+### LLM panel instead of people (2026-11-02, solo pilot)
+
+No annotators are available, so two LLMs act as the two annotators
+(`data/llm_oracle.py`, notebook 05 part A2, `oracle.llm_panel` in the config):
+
+- **Annotators:** Claude Opus 5.5 (`opus`) and Llama-3.3-70B-Instruct in 4-bit (`llama`).
+  They come from different vendors and families, and neither is the Qwen model under test.
+  **Adjudicator:** Claude Sonnet 5.5, only on rows the two disagree on.
+- **Not the System 6 judge.** The LLM-as-judge baseline uses a model that isn't on the panel
+  (D5), with its own short prompt. The panel gets this document's label definitions
+  (`ORACLE_SYSTEM`, kept word for word in sync with "The two labels" above) and the option
+  probabilities.
+- **Same procedure:** `llm_pilot` (30 rows, kappa ≥ 0.6 on both fields), then `llm_main` with
+  every remaining row of the labelled checkpoint (labels are cheap, so no 120-row cap).
+  Resolution is the same, except that an item needs **both** annotators' labels
+  (`resolve(min_annotators=2)`), so a row one model refused or failed doesn't pass on the
+  other's label alone. Rows either model marks `bad translation` are dropped (this now applies
+  to human rounds too).
+- **Validation without a fluent human:** `known_answer_check` against TruthfulQA answer keys:
+  `aligned` vs whether the target's top option is correct, collapse recall on rows right in
+  English and wrong in the target, and specificity on rows with the same option in both. This
+  only covers honesty. Pluralistic-value and helpfulness labels rest on panel agreement alone;
+  say so in the paper.
+- Each reply is logged with its `cost_tokens` to `filled/<annotator>.jsonl`.

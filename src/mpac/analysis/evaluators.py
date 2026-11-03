@@ -13,6 +13,8 @@ Rules this follows (CLAUDE.md):
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from mpac.data.schema import Generation, ParallelItem
 
 
@@ -20,7 +22,8 @@ def run_systems(cfg: dict, items: list[ParallelItem], gens: dict[str, dict[str, 
                 oracle_tune: dict, oracle_test: dict, thresholds: dict | None = None,
                 embeddings: dict | None = None, lang_ids: dict | None = None,
                 registry_path=None) -> dict:
-    """One model + checkpoint. Returns {"systems": name -> scores, "adaptive": summary}."""
+    """One model + checkpoint. Returns {"systems": name -> scores, "adaptive": summary,
+    "evals": name -> list of Evaluation} (evals feed review_rows, they aren't saved)."""
     from mpac.agents.coordinator import LifecycleCoordinator
     from mpac.agents.registry import AgentRegistry
     from mpac.analysis.metrics import coverage, detection_scores
@@ -52,7 +55,59 @@ def run_systems(cfg: dict, items: list[ParallelItem], gens: dict[str, dict[str, 
     summary = {k: v for k, v in summary.items() if k != "collapse_map"} | {
         "collapse_map": {f"{lang}/{obj}": v for (lang, obj), v in summary["collapse_map"].items()},
         "events": coord.registry.events}
-    return {"systems": systems, "adaptive": summary, "budget": budget}
+    return {"systems": systems, "adaptive": summary, "budget": budget, "evals": runs}
+
+
+REVIEW_TEXT_CHARS = 600   # responses are cut to this in the review sheet so it opens in Sheets
+
+
+def review_rows(items: list[ParallelItem], gens: dict[str, dict[str, Generation]],
+                evals: dict[str, list], thresholds: dict, splits: dict[str, str],
+                oracle: dict, lang_ids: dict | None = None, reference: str = "en") -> list[dict]:
+    """One row per (target language, item): the two responses, the signal, each system's
+    verdict (flagged if any of its evaluations against the reference flagged it, as in
+    detection_scores) and how often it looked, and the oracle label. For checking by hand why
+    systems agree or differ."""
+    from collections import defaultdict
+
+    from mpac.signals.calibration import signal_kind
+
+    seen: dict[str, dict[tuple[str, str], list]] = {}
+    for name, es in evals.items():
+        by = defaultdict(list)
+        for e in es:
+            if e.compared_to == reference:
+                by[(e.lang, e.item_id)].append(e)
+        seen[name] = by
+    cut = lambda t: (t or "")[:REVIEW_TEXT_CHARS]
+    rows = []
+    for it in items:
+        ref = gens.get(reference, {}).get(it.item_id)
+        for lang, by_item in gens.items():
+            g = by_item.get(it.item_id)
+            if lang == reference or g is None or ref is None:
+                continue
+            kind = signal_kind(ref, g)
+            divs = [e.divergence for name in seen for e in seen[name].get((lang, it.item_id), [])]
+            label = oracle.get((lang, it.item_id, it.objective))
+            row = {"lang": lang, "item_id": it.item_id, "objective": it.objective,
+                   "split": splits.get(it.item_id, ""),
+                   "oracle_collapsed": "" if label is None else label, "signal": kind,
+                   "divergence": round(divs[0], 4) if divs else "",
+                   "threshold": round(thresholds.get((lang, kind), float("nan")), 4),
+                   "detected_lang": (lang_ids or {}).get(lang, {}).get(it.item_id, "")}
+            verdicts = []
+            for name in evals:
+                es = seen[name].get((lang, it.item_id), [])
+                v = any(e.collapse for e in es)
+                verdicts.append(v if es else None)
+                row[f"{name} | flagged"] = v if es else ""
+                row[f"{name} | n_evals"] = len(es)
+            row["systems_differ"] = len({v or False for v in verdicts}) > 1
+            row |= {"prompt_en": cut(it.prompts[reference]), "response_en": cut(ref.response),
+                    "prompt_target": cut(it.prompts[lang]), "response_target": cut(g.response)}
+            rows.append(row)
+    return rows
 
 
 def per_cell_scores(evals, oracle_test: dict, reference: str = "en") -> dict[str, dict]:
@@ -96,9 +151,12 @@ def load_signals(cfg: dict, model_id: str, checkpoint: str) -> dict:
 
 def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
                 round_name: str = "main", signals: dict | None = None) -> tuple[dict, dict, dict]:
-    """(tune labels, test labels, info). source="human": the resolved labels of
-    oracle/<round_name>/; "proxy": data.oracle.proxy_oracle (pipeline check only)."""
-    from mpac.data.oracle import load_round, proxy_oracle, resolve, to_oracle
+    """(tune labels, test labels, info). source="human" or "llm": the resolved labels of
+    oracle/<round_name>/ (filled by people, or by the LLM panel in data/llm_oracle.py; same
+    layout). Items marked bad translation are dropped, and an item needs
+    oracle.annotators_per_item annotators. "proxy": data.oracle.proxy_oracle (pipeline check
+    only)."""
+    from mpac.data.oracle import drop_bad_translations, load_round, proxy_oracle, resolve, to_oracle
     from mpac.data.splits import get_or_create_splits
     from mpac.paths import subdir
 
@@ -107,20 +165,21 @@ def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human"
         splits = get_or_create_splits(cfg, s["items"])
         allo = proxy_oracle(s["items"], s["gens"], cfg["languages"]["reference"])
         info = {"source": "proxy (TruthfulQA answers, honesty only): NOT REPORTABLE"}
-    elif source == "human":
+    elif source in ("human", "llm"):
         from mpac.data.loaders import load_items
 
         splits = get_or_create_splits(cfg, load_items(cfg))
-        labels, adj, unresolved = [], [], 0
+        labels, adj = [], []
         for lab, ad in load_round(subdir(cfg, "oracle") / round_name).values():
             labels += lab
             adj += ad
-        resolved, left = resolve(labels, adj)
+        labels, bad = drop_bad_translations(labels)
+        resolved, left = resolve(labels, adj, cfg["oracle"]["annotators_per_item"])
         allo = to_oracle(resolved, model_id, checkpoint)
-        unresolved = len(left)
-        info = {"source": f"human, round {round_name}", "unresolved": unresolved}
+        info = {"source": f"{source}, round {round_name}", "unresolved": len(left),
+                "bad_translation": len(bad)}
     else:
-        raise ValueError("source must be 'human' or 'proxy'")
+        raise ValueError("source must be 'human', 'llm' or 'proxy'")
     tune = {k: v for k, v in allo.items() if splits.get(k[1]) == "tune"}
     test = {k: v for k, v in allo.items() if splits.get(k[1]) == "test"}
     info |= {"n_tune": len(tune), "n_test": len(test), "n_collapsed_test": sum(test.values())}
@@ -152,5 +211,16 @@ def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
                   for lang, ids in s["lang_ids"].items() if lang != ref}
     out |= {"oracle": info, "wrong_language_responses": wrong_lang,
             "thresholds": {f"{lang}/{kind}": v for (lang, kind), v in th_report.items()}}
+    evals = out.pop("evals")
     out["path"] = str(save_results(cfg, model_id, checkpoint, f"table6_{source}", out))
+    import pandas as pd
+
+    from mpac.data.splits import get_or_create_splits
+
+    rows = review_rows(s["items"], s["gens"], evals, thresholds,
+                       get_or_create_splits(cfg, s["items"]), tune | test, s["lang_ids"], ref)
+    review = Path(out["path"]).with_name(f"table6_{source}_review.csv")
+    pd.DataFrame(rows).to_csv(review, index=False, encoding="utf-8")
+    out["review_path"] = str(review)
+    out["n_pairs_systems_differ"] = sum(r["systems_differ"] for r in rows)
     return out

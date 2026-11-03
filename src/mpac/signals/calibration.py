@@ -46,7 +46,9 @@ def tune_thresholds(divs: dict[tuple[str, str], dict[str, float]],
                     min_labels: int = 6) -> tuple[Thresholds, dict]:
     """divs: (lang, kind) -> item_id -> divergence. oracle: (lang, item_id, objective) ->
     collapsed, tune split only. Picks the cut with the best balanced accuracy (ties: closest to
-    the starting value). Returns thresholds and, per key, what was used and why."""
+    the starting value). A key is tuned only with at least `min_labels` labels of **each**
+    class (D3); otherwise one collapsed item can drag the cut anywhere. Returns thresholds and,
+    per key, what was used and why."""
     labels: dict[tuple[str, str], bool] = {(lang, iid): y for (lang, iid, _), y in oracle.items()}
     out, report = dict(start), {}
     for key, by_item in divs.items():
@@ -54,7 +56,7 @@ def tune_thresholds(divs: dict[tuple[str, str], dict[str, float]],
         pairs = [(d, labels[(lang, i)]) for i, d in by_item.items() if (lang, i) in labels]
         n_pos = sum(y for _, y in pairs)
         info = {"n_labels": len(pairs), "n_collapsed": n_pos, "start": start.get(key)}
-        if len(pairs) < min_labels or n_pos == 0 or n_pos == len(pairs):
+        if min(n_pos, len(pairs) - n_pos) < min_labels:
             report[key] = {**info, "threshold": start.get(key), "source": "start (too few labels)"}
             continue
         ds, ys = zip(*sorted(pairs))

@@ -37,6 +37,8 @@ signals = [
     "sentence-transformers>=3.0",   # LaBSE cross-lingual similarity
     "fasttext-langdetect>=1.0",     # language-ID check for silent language switching
 ]
+# LLM-panel oracle and the LLM-as-judge baseline (Anthropic API).
+llm = ["anthropic>=2.0"]
 dev = ["pytest>=8.0", "ruff>=0.5", "sacrebleu>=2.4"]
 
 [tool.setuptools.packages.find]

@@ -9,9 +9,9 @@ Record a decision here when the team settles it: what was chosen, why, and the d
 | D2 | Cheap signals and ACS definition | Proposed |
 | D3 | Lifecycle utility and thresholds | Proposed |
 | D4 | Machine translation model | **Proposed**, pending notebook 02 comparison |
-| D5 | LLM judge model | Open |
+| D5 | LLM judge model | **Proposed** (2026-11-02): Claude Haiku 5.5, kept off the oracle panel |
 | D6 | Safety / jailbreak benchmarks for the new languages | Open |
-| D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`) |
+| D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`); solo pilot uses an LLM panel |
 | D8 | Which PLURAL pairs train en_aligned / multi_aligned? | Open (pilot default: b) |
 | D9 | Portuguese and Spanish variants (pt-BR vs pt-PT, es-ES vs es-419) | Open |
 
@@ -121,10 +121,14 @@ blind check of 20 forward translations per language by a fluent speaker. Record 
 name, revision hash and decoding settings (beam 4) here once chosen, then delete the loser
 from `MT_CANDIDATES`.
 
-## D5 · LLM judge (open)
+## D5 · LLM judge (proposed, 2026-11-02)
 
 Choose the judge model for the LLM-as-judge baseline. It should be strong in all six
 languages and affordable for the full evaluation budget.
+
+- **Solo pilot proposal: `claude-haiku-5-5`.** Cheap enough for the full budget, and it
+  reports token usage per call (`cost_tokens`). It must stay off the oracle panel (D7): if the
+  judge and the oracle were the same model, Table 6 would score System 6 against itself.
 
 ## D6 · Safety benchmarks (open)
 
@@ -134,7 +138,16 @@ over-refusal set. Check language coverage and licence before committing.
 ## D7 · Oracle labels (proposed)
 
 Full protocol and annotator guidelines: `docs/oracle_protocol.md`. Tooling: `data/oracle.py`.
-Summary:
+
+**Solo pilot (2026-11-02, Hursh): LLM panel instead of human annotators**, because there are
+none. Claude Opus 5.5 and Llama-3.3-70B-Instruct label every row with the protocol rubric,
+Claude Sonnet 5.5 adjudicates disagreements (`data/llm_oracle.py`, notebook 05 part A2).
+Same kappa ≥ 0.6 gate, same tune/test rule. The two annotators come from different vendors and
+neither is the System 6 judge (D5). With no fluent human available, the panel is validated
+only against TruthfulQA answer keys (`known_answer_check`). Report it as an "LLM-panel
+oracle", never as human labels. Labels cost little, so the round covers every eligible row.
+
+Summary (human protocol):
 - 300 target-language generations, stratified evenly over (language × objective) cells and
   over checkpoints.
 - 2 annotators per item. Each must be fluent in English and in the target language,

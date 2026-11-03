@@ -49,3 +49,10 @@ def test_table6_from_filled_sheets(cfg, tmp_path):
     assert set(out["systems"]) == {"4 single evaluator", "5 fixed multi-agent", "7 adaptive lifecycle"}
     assert out["systems"]["7 adaptive lifecycle"]["f1"] > 0.5
     assert (tmp_path / "results" / "synthetic" / "base" / "table6_human.json").exists()
+
+    import pandas as pd
+    review = pd.read_csv(out["review_path"])
+    assert len(review) == 90 * len(TARGETS)          # one row per (language, item)
+    assert {"oracle_collapsed", "divergence", "threshold", "systems_differ",
+            "7 adaptive lifecycle | flagged", "4 single evaluator | n_evals"} <= set(review.columns)
+    assert out["n_pairs_systems_differ"] == int(review["systems_differ"].sum())

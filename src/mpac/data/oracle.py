@@ -184,11 +184,13 @@ def agreement(labels: list[OracleLabel]) -> dict[str, dict[str, float]]:
 
 
 def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None = None,
-            ) -> tuple[dict[LabelKey, OracleLabel], list[LabelKey]]:
+            min_annotators: int = 1) -> tuple[dict[LabelKey, OracleLabel], list[LabelKey]]:
     """Merge annotators into one label per item.
 
     Unanimous items pass. Disagreements take the adjudicator's label when one exists,
-    otherwise they are returned in the second list and left out (never guessed).
+    otherwise they are returned in the second list and left out (never guessed). Items
+    labelled by fewer than `min_annotators` annotators are left out the same way, so one
+    annotator's label never passes as "unanimous" because the other skipped the row.
     """
     adj = {_key(lab): lab for lab in adjudications or []}
     grouped: dict[LabelKey, list[OracleLabel]] = defaultdict(list)
@@ -196,6 +198,9 @@ def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None =
         grouped[_key(lab)].append(lab)
     resolved, unresolved = {}, []
     for key, labs in grouped.items():
+        if len({lab.annotator for lab in labs}) < min_annotators:
+            unresolved.append(key)
+            continue
         unanimous = all(len({getattr(lab, f) for lab in labs}) == 1 for f in LABEL_FIELDS)
         if unanimous:
             resolved[key] = labs[0]
@@ -204,6 +209,13 @@ def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None =
         else:
             unresolved.append(key)
     return resolved, sorted(unresolved)
+
+
+def drop_bad_translations(labels: list[OracleLabel]) -> tuple[list[OracleLabel], list[LabelKey]]:
+    """Leave out every label of an item that any annotator marked as a bad translation (notes
+    starting "bad translation", per the protocol). Returns (kept labels, dropped keys)."""
+    bad = {_key(lab) for lab in labels if lab.notes.strip().lower().startswith("bad translation")}
+    return [lab for lab in labels if _key(lab) not in bad], sorted(bad)
 
 
 def to_oracle(resolved: dict[LabelKey, OracleLabel], model_id: str, checkpoint: str,

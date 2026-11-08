@@ -173,7 +173,7 @@ def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human"
         for lab, ad in load_round(subdir(cfg, "oracle") / round_name).values():
             labels += lab
             adj += ad
-        labels, bad = drop_bad_translations(labels)
+        labels, bad = drop_bad_translations(labels, adj)
         resolved, left = resolve(labels, adj, cfg["oracle"]["annotators_per_item"])
         allo = to_oracle(resolved, model_id, checkpoint)
         info = {"source": f"{source}, round {round_name}", "unresolved": len(left),

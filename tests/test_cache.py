@@ -30,3 +30,19 @@ def test_get_model_by_id():
         "qwen2.5-1.5b"
     with pytest.raises(KeyError):
         get_model(cfg, "gpt-5")
+
+
+def test_token_limit_report_counts_cut_free_text_only():
+    from mpac.data.schema import Generation, ParallelItem
+    from mpac.generation.generate import token_limit_report
+
+    tok = lambda text, add_special_tokens=False: {"input_ids": text.split()}   # one token per word
+    items = [ParallelItem(i, obj, {"en": "q"}) for i, obj in
+             (("a", "helpfulness"), ("b", "helpfulness"), ("c", "honesty"), ("d", "honesty"))]
+    gens = {"hi": {"a": Generation("m", "base", "hi", "a", "w " * 10),           # cut (re-encoded)
+                   "b": Generation("m", "base", "hi", "b", "w w"),
+                   "c": Generation("m", "base", "hi", "c", "x", meta={"hit_limit": True}),
+                   "d": Generation("m", "base", "hi", "d", "w " * 10, [1.0, 0.0])}}   # forced choice
+    r = token_limit_report(gens, items, tok, max_new_tokens=10)["hi"]
+    assert r["n_free_text"] == 3 and r["n_hit_limit"] == 2
+    assert r["rate_helpfulness"] == 0.5 and r["rate_honesty"] == 1.0

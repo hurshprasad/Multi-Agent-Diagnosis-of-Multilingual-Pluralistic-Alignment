@@ -8,6 +8,8 @@ from mpac.analysis.results import save_results
 from mpac.config import load_config
 from mpac.data.io import write_jsonl
 from mpac.data.llm_oracle import (
+    REASON_FORMAT,
+    REPLY_FORMAT,
     adjudicate,
     build_prompt,
     disagreements,
@@ -15,7 +17,14 @@ from mpac.data.llm_oracle import (
     label_round,
     parse_reply,
 )
-from mpac.data.oracle import agreement, export_round, load_round, resolve, sample_for_labelling
+from mpac.data.oracle import (
+    agreement,
+    drop_bad_translations,
+    export_round,
+    load_round,
+    resolve,
+    sample_for_labelling,
+)
 from mpac.data.schema import Generation, ParallelItem
 from mpac.data.synthetic import make_synthetic
 from mpac.generation.cache import GenerationCache
@@ -29,7 +38,7 @@ def _key_from_prompt(prompt):
     return prompt.split("prompt ")[1].split("\n")[0]
 
 
-def _fake(oracle, lang_of, flip=frozenset(), fail=frozenset()):
+def _fake(oracle, lang_of, flip=frozenset(), fail=frozenset(), bad=frozenset()):
     def annotate(prompts):
         out = []
         for p in prompts:
@@ -39,7 +48,8 @@ def _fake(oracle, lang_of, flip=frozenset(), fail=frozenset()):
                 continue
             truth = next(v for (lang, i, _), v in oracle.items() if i == iid and lang == lang_of(p))
             out.append({"aligned": True, "collapsed_vs_reference": truth != ((lang_of(p), iid) in flip),
-                        "bad_translation": False, "evidence": "test", "cost_tokens": 10})
+                        "bad_translation": (lang_of(p), iid) in bad, "evidence": "test",
+                        "cost_tokens": 10})
         return out
     return annotate
 
@@ -67,12 +77,17 @@ def test_parse_reply_accepts_wrapped_json_and_rejects_bad():
         parse_reply('{"aligned": "yes", "collapsed_vs_reference": false, "bad_translation": false}')
     with pytest.raises(ValueError):
         parse_reply("no json here")
+    # reasoning first (open models), braces in it, labels in the last object
+    d = parse_reply('The {English} answer is A, Hindi picks B.\n{"aligned": false, '
+                    '"collapsed_vs_reference": true, "bad_translation": false, "evidence": "B"}')
+    assert d["collapsed_vs_reference"] is True and d["evidence"] == "B"
 
 
 def test_prompt_shows_both_responses_and_probs(setup):
     *_, rows, _ = setup
     p = build_prompt(rows[0])
     assert "English response:" in p and "option probabilities" in p and "Reply with JSON" in p
+    assert p.endswith(REPLY_FORMAT) and "First reason" in p.replace(REPLY_FORMAT, REASON_FORMAT)
 
 
 def test_panel_round_resume_adjudicate(setup):
@@ -105,6 +120,22 @@ def test_panel_round_resume_adjudicate(setup):
     assert unresolved == [] and len(adj) == 3
     assert all(lab.collapsed_vs_reference == oracle[(lab.lang, lab.item_id, lab.objective)]
                for lab in resolved.values())
+
+
+def test_adjudicator_bad_translation_drops_item(setup):
+    # Only the adjudicator sees the bad translation: the item must be dropped, not resolved
+    # to the adjudication's forced "no / no".
+    _, _, oracle, rows, round_dir = setup
+    hi_ids = [r["item_id"] for r in rows if r["lang"] == "hi"]
+    flip = frozenset(("hi", i) for i in hi_ids[:3])
+    label_round(round_dir, "opus", _fake(oracle, _lang_of))
+    label_round(round_dir, "llama", _fake(oracle, _lang_of, flip=flip))
+    adjudicate(round_dir, "sonnet", _fake(oracle, _lang_of, bad=frozenset({("hi", hi_ids[0])})))
+    labels, adj = load_round(round_dir)["hi"]
+    kept, dropped = drop_bad_translations(labels, adj)
+    assert dropped and all(hi_ids[0] in k for k in dropped)
+    resolved, unresolved = resolve(kept, adj, min_annotators=2)
+    assert unresolved == [] and len(resolved) == len(hi_ids) - 1
 
 
 def test_single_annotator_is_not_unanimous(setup):
@@ -154,3 +185,16 @@ def test_known_answer_check(tmp_path):
     assert r["n_same"] == 1 and r["same_specificity"] == 1.0
     log = (round_dir / "hi" / "filled" / "good.jsonl").read_text().splitlines()
     assert len(log) == 3 and json.loads(log[0])["annotator"] == "good"
+
+    # a second annotator marks "lost" as a bad translation: it leaves both annotators' counts
+    round2 = tmp_path / "r2"
+    export_round(rows, round2, {"hi": ["good", "picky"]})
+    label_round(round2, "good", lambda ps: [
+        {"aligned": truth[_key_from_prompt(p)][0],
+         "collapsed_vs_reference": truth[_key_from_prompt(p)][1],
+         "bad_translation": False, "evidence": ""} for p in ps])
+    label_round(round2, "picky", lambda ps: [
+        {"aligned": False, "collapsed_vs_reference": False,
+         "bad_translation": _key_from_prompt(p) == "lost", "evidence": ""} for p in ps])
+    r = known_answer_check(round2, items)
+    assert r["good"]["n"] == 2 and r["good"]["n_lost"] == 0 and r["picky"]["n"] == 2

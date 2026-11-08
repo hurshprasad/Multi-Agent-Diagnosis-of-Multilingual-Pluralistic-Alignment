@@ -211,10 +211,13 @@ def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None =
     return resolved, sorted(unresolved)
 
 
-def drop_bad_translations(labels: list[OracleLabel]) -> tuple[list[OracleLabel], list[LabelKey]]:
-    """Leave out every label of an item that any annotator marked as a bad translation (notes
-    starting "bad translation", per the protocol). Returns (kept labels, dropped keys)."""
-    bad = {_key(lab) for lab in labels if lab.notes.strip().lower().startswith("bad translation")}
+def drop_bad_translations(labels: list[OracleLabel], adjudications: list[OracleLabel] = (),
+                          ) -> tuple[list[OracleLabel], list[LabelKey]]:
+    """Leave out every label of an item that any annotator, or the adjudicator, marked as a bad
+    translation (notes starting "bad translation", per the protocol). Returns (kept labels,
+    dropped keys); resolve() never reaches the adjudication of a dropped item."""
+    bad = {_key(lab) for lab in [*labels, *adjudications]
+           if lab.notes.strip().lower().startswith("bad translation")}
     return [lab for lab in labels if _key(lab) not in bad], sorted(bad)
 
 

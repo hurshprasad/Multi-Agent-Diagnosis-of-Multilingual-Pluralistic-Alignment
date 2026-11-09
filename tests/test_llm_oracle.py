@@ -198,3 +198,14 @@ def test_known_answer_check(tmp_path):
          "bad_translation": _key_from_prompt(p) == "lost", "evidence": ""} for p in ps])
     r = known_answer_check(round2, items)
     assert r["good"]["n"] == 2 and r["good"]["n_lost"] == 0 and r["picky"]["n"] == 2
+
+
+def test_require_gpu_fails_before_download_on_small_gpu():
+    from mpac.data.llm_oracle import require_gpu
+
+    assert require_gpu(39, total_gb=79.2) == 79.2
+    with pytest.raises(RuntimeError, match="22 GiB GPU"):
+        require_gpu(39, total_gb=22.2)   # L4
+    with pytest.raises(RuntimeError, match="no GPU"):
+        require_gpu(39, total_gb=0.0)
+    assert require_gpu(0, total_gb=0.0) == 0.0

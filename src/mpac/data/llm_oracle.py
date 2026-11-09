@@ -175,15 +175,33 @@ def anthropic_annotator(model: str = "claude-opus-5-5", effort: str = "high",
     return annotate
 
 
+def require_gpu(min_gb: float, total_gb: float | None = None) -> float:
+    """Raise before any download if the GPU is smaller than `min_gb` (GiB). `total_gb` is the
+    GPU's memory, read from torch when None (0 without CUDA). Returns the GPU's memory."""
+    if total_gb is None:
+        import torch
+
+        total_gb = (torch.cuda.get_device_properties(0).total_memory / 2**30
+                    if torch.cuda.is_available() else 0.0)
+    if total_gb < min_gb:
+        have = f"a {total_gb:.0f} GiB GPU" if total_gb else "no GPU"
+        raise RuntimeError(f"This model needs a GPU with at least {min_gb:.0f} GiB; the runtime has "
+                           f"{have}. Runtime → Change runtime type → A100, then re-run the setup cells.")
+    return total_gb
+
+
 def hf_annotator(model_id: str = "meta-llama/Llama-3.3-70B-Instruct", batch_size: int = 8,
-                 max_new_tokens: int = 1024, reason: bool = True) -> Annotate:
+                 max_new_tokens: int = 1024, reason: bool = True,
+                 min_gpu_gb: float = 39.0) -> Annotate:
     """Open model on the Colab GPU (4-bit), greedy, JSON parsed from the reply. With `reason`
     it writes a short rationale before the JSON (llm_pilot2 on; llm_pilot answered JSON only and
-    read the responses too shallowly). Llama-3.3-70B in 4-bit needs about 40 GB: an A100."""
+    read the responses too shallowly). Llama-3.3-70B in 4-bit needs about 40 GB: an A100.
+    `min_gpu_gb` is checked before the (141 GB) download; set it to 0 for small models."""
     import torch
 
     from mpac.generation.generate import load_model
 
+    require_gpu(min_gpu_gb)
     tok, model = load_model(model_id, load_in_4bit=True)
 
     def annotate(prompts: list[str]) -> list[dict]:

@@ -25,6 +25,7 @@ import csv
 import json
 import random
 from collections import defaultdict
+from dataclasses import replace
 from itertools import combinations
 from pathlib import Path
 
@@ -187,8 +188,10 @@ def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None =
             min_annotators: int = 1) -> tuple[dict[LabelKey, OracleLabel], list[LabelKey]]:
     """Merge annotators into one label per item.
 
-    Unanimous items pass. Disagreements take the adjudicator's label when one exists,
-    otherwise they are returned in the second list and left out (never guessed). Items
+    Unanimous items pass. On a disagreement the adjudicator decides only the fields the
+    annotators disagree on; a field they agree on keeps their value (the adjudicator sees the
+    whole row and may relabel it, but that isn't what adjudication is for). Disagreements with
+    no adjudication are returned in the second list and left out (never guessed). Items
     labelled by fewer than `min_annotators` annotators are left out the same way, so one
     annotator's label never passes as "unanimous" because the other skipped the row.
     """
@@ -205,7 +208,9 @@ def resolve(labels: list[OracleLabel], adjudications: list[OracleLabel] | None =
         if unanimous:
             resolved[key] = labs[0]
         elif key in adj:
-            resolved[key] = adj[key]
+            agreed = {f: getattr(labs[0], f) for f in LABEL_FIELDS
+                      if len({getattr(lab, f) for lab in labs}) == 1}
+            resolved[key] = replace(adj[key], **agreed)
         else:
             unresolved.append(key)
     return resolved, sorted(unresolved)

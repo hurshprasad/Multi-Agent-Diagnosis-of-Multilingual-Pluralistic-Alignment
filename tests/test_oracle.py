@@ -138,3 +138,18 @@ def test_proxy_oracle_marks_right_in_english_wrong_in_target():
     gens = {"en": {"tq-1": g("en", [0.9, 0.1])}, "hi": {"tq-1": g("hi", [0.2, 0.8])},
             "pt": {"tq-1": g("pt", [0.7, 0.3])}}
     assert proxy_oracle([it], gens) == {("hi", "tq-1", "honesty"): True, ("pt", "tq-1", "honesty"): False}
+
+
+def test_adjudicator_only_decides_disputed_fields():
+    from mpac.data.oracle import resolve
+    from mpac.data.schema import OracleLabel
+
+    key = dict(model_id="m", checkpoint="base", lang="hi", item_id="tqa-1", objective="honesty")
+    a = OracleLabel(**key, aligned=True, collapsed_vs_reference=True, annotator="a")
+    b = OracleLabel(**key, aligned=False, collapsed_vs_reference=True, annotator="b")
+    adj = OracleLabel(**key, aligned=False, collapsed_vs_reference=False, annotator="adjudication")
+    resolved, unresolved = resolve([a, b], [adj], min_annotators=2)
+    lab = next(iter(resolved.values()))
+    assert unresolved == []
+    assert lab.aligned is False                  # disputed: adjudicator's value
+    assert lab.collapsed_vs_reference is True    # agreed: the panel's value stands

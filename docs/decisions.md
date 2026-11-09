@@ -10,7 +10,7 @@ Record a decision here when the team settles it: what was chosen, why, and the d
 | D3 | Lifecycle utility and thresholds | Proposed |
 | D4 | Machine translation model | **Proposed**, pending notebook 02 comparison |
 | D5 | LLM judge model | **Proposed** (2026-11-02): Claude Haiku 5.5, kept off the oracle panel |
-| D6 | Safety / jailbreak benchmarks for the new languages | Open |
+| D6 | Safety / jailbreak benchmarks for the new languages | Open (pilot: translated XSTest) |
 | D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`); solo pilot uses an LLM panel |
 | D8 | Which PLURAL pairs train en_aligned / multi_aligned? | Open (pilot default: b) |
 | D9 | Portuguese and Spanish variants (pt-BR vs pt-PT, es-ES vs es-419) | Open |
@@ -140,6 +140,14 @@ languages and affordable for the full evaluation budget.
 
 Need public safety and jailbreak benchmarks covering pt / es / it / de / fr, plus an
 over-refusal set. Check language coverage and licence before committing.
+
+**Solo pilot (2026-11-09, hi / pt): XSTest, machine-translated** (`Paul/XSTest`, CC-BY-4.0,
+`safety/evaluate.py`, notebook 07). 200 unsafe prompts (safety = refusal rate) and 250 safe
+look-alikes (over-refusal), translated with the study's MT model like the eval set; responses
+classified full_compliance / full_refusal / partial_refusal (XSTest's scheme) by the Haiku
+model. Report as machine-translated XSTest. Not covered: jailbreak attack success (no attacks
+in XSTest, and no public jailbreak set found covering both hi and pt). For the team languages,
+check native multilingual sets before reusing this.
 
 ## D7 · Oracle labels (proposed)
 

@@ -77,10 +77,11 @@ def parse_judge(d: dict) -> dict:
             "evidence": str(d.get("evidence", ""))}
 
 
-def anthropic_judge(model: str = "claude-haiku-5-5", effort: str = "medium",
-                    workers: int = 16) -> Judge:
-    """Claude through the Anthropic API, JSON constrained to JUDGE_SCHEMA, prompts sent in
-    parallel. A failed or refused prompt comes back as {"error": ...} and is retried next run."""
+def anthropic_structured(model: str, effort: str, schema: dict, parse: Callable[[dict], dict],
+                         workers: int = 16, max_tokens: int = 4000) -> Judge:
+    """Claude through the Anthropic API with JSON constrained to `schema`, validated by
+    `parse`, prompts sent in parallel. A failed or refused prompt comes back as
+    {"error": ...} (retried on the next run when wrapped in CachedJudge)."""
     from concurrent.futures import ThreadPoolExecutor
 
     import anthropic
@@ -91,10 +92,9 @@ def anthropic_judge(model: str = "claude-haiku-5-5", effort: str = "medium",
         system, user = p
         try:
             resp = client.messages.create(
-                model=model, max_tokens=4000, system=system,
+                model=model, max_tokens=max_tokens, system=system,
                 messages=[{"role": "user", "content": user}],
-                output_config={"effort": effort,
-                               "format": {"type": "json_schema", "schema": JUDGE_SCHEMA}},
+                output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
             )
         except anthropic.APIStatusError as e:
             if e.status_code in (401, 403, 404):
@@ -107,15 +107,21 @@ def anthropic_judge(model: str = "claude-haiku-5-5", effort: str = "medium",
             return {"error": f"stop_reason {resp.stop_reason}", "cost_tokens": tokens}
         text = next((b.text for b in resp.content if b.type == "text"), "")
         try:
-            return {**parse_judge(json.loads(text)), "cost_tokens": tokens, "model": resp.model}
+            return {**parse(json.loads(text)), "cost_tokens": tokens, "model": resp.model}
         except (ValueError, json.JSONDecodeError) as e:
             return {"error": str(e), "raw": text[:300], "cost_tokens": tokens}
 
-    def judge(prompts: list[tuple[str, str]]) -> list[dict]:
+    def call(prompts: list[tuple[str, str]]) -> list[dict]:
         with ThreadPoolExecutor(workers) as ex:
             return list(ex.map(one, prompts))
 
-    return judge
+    return call
+
+
+def anthropic_judge(model: str = "claude-haiku-5-5", effort: str = "medium",
+                    workers: int = 16) -> Judge:
+    """The System 6 judge: JUDGE_SCHEMA replies, validated by parse_judge."""
+    return anthropic_structured(model, effort, JUDGE_SCHEMA, parse_judge, workers)
 
 
 class CachedJudge:

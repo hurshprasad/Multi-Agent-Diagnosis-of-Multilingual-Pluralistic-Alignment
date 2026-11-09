@@ -22,6 +22,7 @@ target models support them well (see `docs/decisions.md`, D0).
 | [`04_train_dpo`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/04_train_dpo.ipynb) | L4 / A100 GPU | DPO + LoRA for en_aligned and multi_aligned (same budget), plus the held-out preference check |
 | [`05_oracle_and_evaluators`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/05_oracle_and_evaluators.ipynb) | CPU (A100 for the Llama annotator) | Oracle labelling sheets (human, or the LLM panel) and agreement, then Table 6: evaluator systems on the same outputs |
 | [`06_interp`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/06_interp.ipynb) | L4 / A100 | Table 7: cross-lingual representation similarity, its link to behaviour, DPO-direction transfer. Table 9: steering the base model's residual stream and re-measuring ACS |
+| [`07_safety`](https://colab.research.google.com/github/hurshprasad/Multi-Agent-Diagnosis-of-Multilingual-Pluralistic-Alignment/blob/main/notebooks/07_safety.ipynb) | A100 (L4 slower) | Table 8: XSTest translated to hi / pt, safety and over-refusal per checkpoint and language, linked to ACS |
 
 Every notebook starts with the same setup cell: clone or pull the repo, `pip install -e`,
 mount Drive. All artifacts go to `MyDrive/mpac/`, so nothing is lost when a runtime resets,

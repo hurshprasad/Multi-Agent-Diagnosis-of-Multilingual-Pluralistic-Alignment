@@ -68,6 +68,10 @@ baselines:
     model: claude-haiku-5-5
     effort: medium
 
+safety:                          # Table 8 (safety/evaluate.py, D6): XSTest, translated
+  max_new_tokens: 256            # a refusal shows in the first sentences; halves generation time
+  batch_size: 32                 # 16 on a T4 or L4
+
 training:                        # training/dpo.py; identical for en_aligned and multi_aligned
   method: dpo
   use_lora: true

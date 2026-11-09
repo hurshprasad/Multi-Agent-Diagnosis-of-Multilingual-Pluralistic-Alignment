@@ -26,8 +26,12 @@ def load_model(hf_name: str, load_in_4bit: bool = True, adapter_path: str | None
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     quant = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16) if load_in_4bit else None
+    # bitsandbytes refuses any CPU offload, so a 4-bit model goes entirely on GPU 0 (or fails
+    # with an out-of-memory error). "auto" sized Llama-3.3-70B wrongly on an 80 GB A100 and
+    # offloaded part of it.
+    device_map = {"": 0} if quant is not None and torch.cuda.is_available() else "auto"
     model = AutoModelForCausalLM.from_pretrained(
-        hf_name, device_map="auto", torch_dtype=torch.float16, quantization_config=quant
+        hf_name, device_map=device_map, torch_dtype=torch.float16, quantization_config=quant
     )
     if adapter_path:  # en_aligned / multi_aligned LoRA adapters from training/dpo.py
         from peft import PeftModel

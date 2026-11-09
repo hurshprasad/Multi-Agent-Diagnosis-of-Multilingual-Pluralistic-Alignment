@@ -186,16 +186,18 @@ def require_gpu(min_gb: float, total_gb: float | None = None) -> float:
     if total_gb < min_gb:
         have = f"a {total_gb:.0f} GiB GPU" if total_gb else "no GPU"
         raise RuntimeError(f"This model needs a GPU with at least {min_gb:.0f} GiB; the runtime has "
-                           f"{have}. Runtime → Change runtime type → A100, then re-run the setup cells.")
+                           f"{have}. Runtime → Change runtime type → H100 or an 80 GB A100 (check with !nvidia-smi), "
+                           "then re-run the setup cells.")
     return total_gb
 
 
 def hf_annotator(model_id: str = "meta-llama/Llama-3.3-70B-Instruct", batch_size: int = 8,
                  max_new_tokens: int = 1024, reason: bool = True,
-                 min_gpu_gb: float = 39.0) -> Annotate:
+                 min_gpu_gb: float = 45.0) -> Annotate:
     """Open model on the Colab GPU (4-bit), greedy, JSON parsed from the reply. With `reason`
     it writes a short rationale before the JSON (llm_pilot2 on; llm_pilot answered JSON only and
-    read the responses too shallowly). Llama-3.3-70B in 4-bit needs about 40 GB: an A100.
+    read the responses too shallowly). Llama-3.3-70B in 4-bit is ~43 GB with fp16 embeddings: an
+    80 GB A100 or an H100 (a 40 GB A100 offloads to CPU and bitsandbytes refuses).
     `min_gpu_gb` is checked before the (141 GB) download; set it to 0 for small models."""
     import torch
 

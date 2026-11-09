@@ -63,6 +63,7 @@ class LifecycleCoordinator:
         novelty_weight: float = 0.2,
         thresholds: dict | None = None,
         lang_ids: dict | None = None,
+        judge=None,
     ):
         a = cfg["agents"]
         self.cap = a["population_cap"]
@@ -80,6 +81,7 @@ class LifecycleCoordinator:
         self.embeddings = embeddings
         self.thresholds = thresholds
         self.lang_ids = lang_ids
+        self.judge = judge   # only for agents.evaluator_type: llm_judge (baselines/llm_judge.py)
         self.registry = registry or AgentRegistry()
         self.patience = patience
         self.novelty_weight = novelty_weight
@@ -99,7 +101,7 @@ class LifecycleCoordinator:
     def _evaluate(self, cycle: int) -> dict[str, list[Evaluation]]:
         out: dict[str, list[Evaluation]] = {}
         for st in self.registry.alive():
-            agent = build_agent(st.spec, self.thresholds, self.lang_ids)
+            agent = build_agent(st.spec, self.thresholds, self.lang_ids, self.judge)
             scope = [it for it in self.items if st.spec.covers(it)]
             batch = self.rng.sample(scope, min(self.batch, len(scope)))
             evals = [e for it in batch if (e := agent.evaluate(it, self.gens, self.embeddings))]

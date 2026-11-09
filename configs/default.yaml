@@ -63,6 +63,11 @@ oracle:                          # proposed protocol (D7, docs/oracle_protocol.m
     adjudicator: {sonnet: claude-sonnet-5-5}
     effort: high                 # Claude reasoning effort for labelling
 
+baselines:
+  llm_judge:                     # System 6 (baselines/llm_judge.py, D5); never on the oracle panel
+    model: claude-haiku-5-5
+    effort: medium
+
 training:                        # training/dpo.py; identical for en_aligned and multi_aligned
   method: dpo
   use_lora: true

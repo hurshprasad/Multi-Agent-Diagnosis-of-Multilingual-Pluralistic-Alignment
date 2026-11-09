@@ -56,3 +56,38 @@ def test_table6_from_filled_sheets(cfg, tmp_path):
     assert {"oracle_collapsed", "divergence", "threshold", "systems_differ",
             "7 adaptive lifecycle | flagged", "4 single evaluator | n_evals"} <= set(review.columns)
     assert out["n_pairs_systems_differ"] == int(review["systems_differ"].sum())
+
+
+def test_table6_with_llm_judge(cfg, tmp_path):
+    from mpac.analysis.evaluators import make_judge
+    from test_llm_judge import oracle_judge
+
+    items, gens, oracle = make_synthetic(TARGETS, OBJECTIVES, n_items=60,
+                                         collapsed={("hi", "honesty"): 0.8})
+    write_jsonl(tmp_path / "items" / "items.jsonl", [it.to_dict() for it in items])
+    GenerationCache(tmp_path / "generations").add(g for by in gens.values() for g in by.values())
+    save_results(cfg, "synthetic", "base", "acs_free_text",
+                 {"hi": {"prompt_floor": 0.14}, "pt": {"prompt_floor": 0.10}})
+    rows = sample_for_labelling(items, {("synthetic", "base"): gens}, n=60, targets=TARGETS)
+    paths = export_round(rows, tmp_path / "oracle" / "main", {"hi": ["a", "b"], "pt": ["c", "d"]})
+    for ps in paths.values():
+        (ps[0].parent / "filled").mkdir()
+        for p in ps:
+            rs = list(csv.DictReader(p.open(encoding="utf-8")))
+            for r in rs:
+                r["aligned"] = "yes"
+                r["collapsed_vs_reference"] = "yes" if oracle[(r["lang"], r["item_id"], r["objective"])] else "no"
+            with open(p.parent / "filled" / p.name, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(rs[0]))
+                w.writeheader()
+                w.writerows(rs)
+
+    out = table6(cfg, "synthetic", "base", judge=oracle_judge(oracle))
+    six = out["systems"]["6 LLM-judge multi-agent"]
+    assert six["tokens"] > 0 and out["systems"]["7 adaptive lifecycle"]["tokens"] == 0
+    assert six["precision"] == 1.0              # the fake judge is the oracle
+    assert list(out["systems"]) == sorted(out["systems"])
+
+    cfg["baselines"]["llm_judge"]["model"] = cfg["oracle"]["llm_panel"]["annotators"]["opus"]
+    with pytest.raises(ValueError, match="oracle panel"):
+        make_judge(cfg)

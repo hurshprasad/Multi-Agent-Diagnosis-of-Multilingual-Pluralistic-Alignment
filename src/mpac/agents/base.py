@@ -154,11 +154,11 @@ class LightweightAgent(Agent):
 
 
 def build_agent(spec: AgentSpec, thresholds: dict | None = None,
-                lang_ids: dict | None = None) -> Agent:
+                lang_ids: dict | None = None, judge=None) -> Agent:
     if spec.signal == "divergence":
         return LightweightAgent(spec, thresholds, lang_ids)
     if spec.signal == "llm_judge":
         from mpac.baselines.llm_judge import LLMJudgeAgent
 
-        return LLMJudgeAgent(spec)
+        return LLMJudgeAgent(spec, judge)
     raise ValueError(f"unknown signal {spec.signal!r}")

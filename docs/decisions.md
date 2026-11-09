@@ -129,6 +129,12 @@ languages and affordable for the full evaluation budget.
 - **Solo pilot proposal: `claude-haiku-5-5`.** Cheap enough for the full budget, and it
   reports token usage per call (`cost_tokens`). It must stay off the oracle panel (D7): if the
   judge and the oracle were the same model, Table 6 would score System 6 against itself.
+- **Implemented (2026-11-09, `baselines/llm_judge.py`):** System 6 is the System 5 team with the
+  signal swapped: one Haiku judge per (language, objective), the same per-agent budget and the
+  same seeded items as System 5, effort `medium` (`baselines.llm_judge` in the config). 5 vs 6
+  isolates the evaluator; 6 vs 7 is the cost comparison. Replies cached on Drive (`judge/`).
+  Not done: EvoAgent-style evolution of judge personas (`evolve_population`); add it as a
+  further row if reviewers ask for the EvoAgent baseline specifically.
 
 ## D6 · Safety benchmarks (open)
 

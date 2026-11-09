@@ -1,7 +1,8 @@
-"""Table 6: the evaluator systems (4 single, 5 fixed, 7 adaptive) on the same cached outputs.
+"""Table 6: the evaluator systems (4 single, 5 fixed, 6 LLM judge, 7 adaptive) on the same
+cached outputs.
 
-Owner: signals/eval track. System 6 (LLM-as-judge) is added once baselines/llm_judge.py is
-wired up (D5).
+Owner: signals/eval track. System 6 runs only when a judge is passed (baselines/llm_judge.py,
+D5); it judges the same items as System 5.
 
 Rules this follows (CLAUDE.md):
 - Every system reads the same generations, embeddings, thresholds and language IDs.
@@ -21,7 +22,7 @@ from mpac.data.schema import Generation, ParallelItem
 def run_systems(cfg: dict, items: list[ParallelItem], gens: dict[str, dict[str, Generation]],
                 oracle_tune: dict, oracle_test: dict, thresholds: dict | None = None,
                 embeddings: dict | None = None, lang_ids: dict | None = None,
-                registry_path=None) -> dict:
+                registry_path=None, judge=None) -> dict:
     """One model + checkpoint. Returns {"systems": name -> scores, "adaptive": summary,
     "evals": name -> list of Evaluation} (evals feed review_rows, they aren't saved)."""
     from mpac.agents.coordinator import LifecycleCoordinator
@@ -46,6 +47,13 @@ def run_systems(cfg: dict, items: list[ParallelItem], gens: dict[str, dict[str, 
                                                  thresholds=thresholds, lang_ids=lang_ids),
         "7 adaptive lifecycle": coord.all_evals,
     }
+    if judge is not None:
+        from mpac.baselines.llm_judge import llm_judge_team
+
+        runs["6 LLM-judge multi-agent"] = llm_judge_team(
+            items, gens, targets, objectives, judge, ref,
+            per_agent_budget=budget // (len(targets) * len(objectives)), seed=seed)
+        runs = {k: runs[k] for k in sorted(runs)}
     systems = {}
     for name, evals in runs.items():
         cov = coverage(evals)
@@ -186,10 +194,24 @@ def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human"
     return tune, test, info
 
 
+def make_judge(cfg: dict):
+    """The System 6 judge from `baselines.llm_judge`, cached under <root>/judge/ (Drive)."""
+    from mpac.baselines.llm_judge import CachedJudge, anthropic_judge
+    from mpac.paths import subdir
+
+    c = cfg["baselines"]["llm_judge"]
+    panel = {**cfg["oracle"]["llm_panel"]["annotators"], **cfg["oracle"]["llm_panel"]["adjudicator"]}
+    if c["model"] in panel.values():
+        raise ValueError(f"judge {c['model']} is on the oracle panel (D5/D7)")
+    return CachedJudge(anthropic_judge(c["model"], c["effort"]),
+                       subdir(cfg, "judge") / f"{c['model']}.jsonl", c["model"])
+
+
 def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
-           round_name: str = "main", embedding_margin: float = 0.15) -> dict:
-    """Thresholds (floor start, tuned on tune labels), then every system on the same signals;
-    saved to results/<model>/<checkpoint>/table6_<source>.json."""
+           round_name: str = "main", embedding_margin: float = 0.15, judge=None) -> dict:
+    """Thresholds (floor start, tuned on tune labels), then every system on the same signals
+    (System 6 only with a `judge`, e.g. make_judge(cfg)); saved to
+    results/<model>/<checkpoint>/table6_<source>.json."""
     from mpac.analysis.results import save_results
     from mpac.signals.acs import item_divergences
     from mpac.signals.calibration import floor_thresholds, tune_thresholds
@@ -206,7 +228,10 @@ def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
             divs[(lang, kind)] = d
     thresholds, th_report = tune_thresholds(divs, tune, start)
     out = run_systems(cfg, s["items"], s["gens"], tune, test, thresholds, s["embeddings"],
-                      s["lang_ids"])
+                      s["lang_ids"], judge=judge)
+    if judge is not None and hasattr(judge, "n_errors"):
+        out["judge"] = {"model": getattr(judge, "model", ""), "calls": judge.n_calls,
+                        "errors": judge.n_errors}
     wrong_lang = {lang: sum(v != lang for v in ids.values())
                   for lang, ids in s["lang_ids"].items() if lang != ref}
     out |= {"oracle": info, "wrong_language_responses": wrong_lang,

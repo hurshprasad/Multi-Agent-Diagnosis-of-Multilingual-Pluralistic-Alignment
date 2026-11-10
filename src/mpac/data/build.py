@@ -8,6 +8,14 @@ Steps and files (all under the artifact root, i.e. Drive on Colab):
   3. assemble_items()    SourceItems + translations          items/items.jsonl
                          -> one ParallelItem per item, with a prompt per language
 
+Hand fixes (configs/translation_fixes.csv) override the MT for strings many items share, such
+as WVS answer scales and lead-ins: MADLAD rendered "A great deal" as "a big business deal" in
+both Hindi and Portuguese, which moved every E069 answer to one option. A fix keyed by a whole
+English string replaces its translation; a fix keyed by one line of a multi-line string (MT
+translates line by line) replaces that line. The MT cache stays as it was. Rebuilding with new
+fixes records which (item, language) prompts changed in items/changed_prompts.jsonl, and
+drop_generations() moves their cached generations aside so notebook 01 regenerates them.
+
 Every step is cached: re-running skips work already on disk, so a disconnect costs little.
 The source sample is drawn once; delete build/source_items.jsonl only to redraw it on purpose
 (that invalidates splits and generations too).
@@ -21,9 +29,12 @@ Sources (docs/decisions.md, D1):
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import json
 import random
 import re
+from pathlib import Path
 
 from mpac.data.io import read_jsonl, write_jsonl
 from mpac.data.schema import ParallelItem, SourceItem
@@ -207,7 +218,92 @@ def assemble_items(sources: list[SourceItem], tables: dict[str, dict[str, str]],
     return items
 
 
-def build_dataset(cfg: dict, translate=None) -> list[ParallelItem]:
+# ---- hand fixes -----------------------------------------------------------------------------
+
+def default_fixes_path() -> Path:
+    from mpac.config import REPO_ROOT
+
+    return REPO_ROOT / "configs" / "translation_fixes.csv"
+
+
+def load_fixes(path: str | Path | None = None) -> dict[str, dict[str, str]]:
+    """configs/translation_fixes.csv (columns en, <lang>..., note) -> {lang: {english: fix}}.
+    Blank cells mean no fix for that language."""
+    path = Path(path) if path is not None else default_fixes_path()
+    if not path.exists():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            en = (row.pop("en") or "").strip()
+            row.pop("note", None)
+            for lang, fix in row.items():
+                if en and fix and fix.strip():
+                    out.setdefault(lang, {})[en] = fix.strip()
+    return out
+
+
+def fix_translation(en: str, tgt: str | None, fixes: dict[str, str]) -> str | None:
+    """The translation of `en` after hand fixes: a fix for the whole string wins; otherwise
+    each line of a multi-line string with a fix is replaced (MT keeps one line per line).
+    Returns `tgt` unchanged when nothing applies, or None if it is still untranslated."""
+    if en in fixes:
+        return fixes[en]
+    lines = en.split("\n")
+    if not any(line.strip() in fixes for line in lines):
+        return tgt
+    tlines = tgt.split("\n") if tgt is not None else [None] * len(lines)
+    if len(tlines) != len(lines):
+        return tgt          # line structure lost; leave it to a whole-string fix
+    out = [fixes.get(e.strip(), t) for e, t in zip(lines, tlines)]
+    return None if any(t is None for t in out) else "\n".join(out)
+
+
+def apply_fixes(texts: list[str], tables: dict[str, dict[str, str]],
+                fixes: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    """Copies of the per-language MT tables with hand fixes applied to `texts`."""
+    out = {}
+    for lang, table in tables.items():
+        f = fixes.get(lang, {})
+        new = dict(table)
+        for t in texts:
+            fixed = fix_translation(t, table.get(t), f)
+            if fixed is not None:
+                new[t] = fixed
+        out[lang] = new
+    return out
+
+
+def changed_prompts(old: list[ParallelItem], new: list[ParallelItem]) -> list[tuple[str, str]]:
+    """(item_id, lang) whose prompt differs between two builds, reference language included."""
+    before = {it.item_id: it.prompts for it in old}
+    return sorted((it.item_id, lang) for it in new for lang, p in it.prompts.items()
+                  if it.item_id in before and before[it.item_id].get(lang, p) != p)
+
+
+def drop_generations(gen_root: str | Path, changed: list[tuple[str, str]]) -> dict[str, int]:
+    """Move cached generations of changed prompts, for every model and checkpoint, to
+    <lang>.replaced.jsonl next to the cache file (kept for the record), so the next
+    generation run redoes exactly those. Returns rows moved per cache file."""
+    from mpac.data.io import write_jsonl
+
+    by_lang: dict[str, set[str]] = {}
+    for iid, lang in changed:
+        by_lang.setdefault(lang, set()).add(iid)
+    moved = {}
+    for lang, ids in by_lang.items():
+        for path in sorted(Path(gen_root).glob(f"*/*/{lang}.jsonl")):
+            rows = list(read_jsonl(path))
+            keep = [r for r in rows if r["item_id"] not in ids]
+            gone = [r for r in rows if r["item_id"] in ids]
+            if gone:
+                write_jsonl(path.with_name(f"{lang}.replaced.jsonl"), gone, append=True)
+                write_jsonl(path, keep)
+                moved[str(path)] = len(gone)
+    return moved
+
+
+def build_dataset(cfg: dict, translate=None, fixes_path: str | Path | None = None) -> list[ParallelItem]:
     """Run steps 1-3, reusing whatever is already on disk. `translate(texts, lang)` defaults
     to the configured MT model, which is only loaded if something still needs translating."""
     from mpac.data.translate import TranslationCache, Translator
@@ -228,6 +324,18 @@ def build_dataset(cfg: dict, translate=None) -> list[ParallelItem]:
     for lang in targets:
         cache.translate_missing(texts, lang, translate)
 
-    items = assemble_items(sources, {lang: cache.load(lang) for lang in targets}, reference)
-    write_jsonl(subdir(cfg, "items") / "items.jsonl", items)
+    tables = apply_fixes(texts, {lang: cache.load(lang) for lang in targets}, load_fixes(fixes_path))
+    items = assemble_items(sources, tables, reference)
+    items_path = subdir(cfg, "items") / "items.jsonl"
+    old = [ParallelItem.from_dict(d) for d in read_jsonl(items_path)]
+    changed = changed_prompts(old, items)
+    if changed:
+        import datetime
+
+        with open(items_path.with_name("changed_prompts.jsonl"), "a", encoding="utf-8") as f:
+            stamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+            for iid, lang in changed:
+                f.write(json.dumps({"item_id": iid, "lang": lang, "at": stamp}) + "\n")
+    write_jsonl(items_path, items)
+    build_dataset.last_changed = changed
     return items

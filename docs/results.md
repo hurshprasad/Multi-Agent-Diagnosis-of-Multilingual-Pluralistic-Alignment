@@ -14,6 +14,11 @@ verified by a fluent speaker. Model: Qwen2.5-7B-Instruct, 4-bit, greedy decoding
 
 ### Base model (qwen2.5-7b / base), 2026-10-21
 
+> **Superseded for forced-choice items (2026-11-10).** These numbers use MADLAD's WVS answer
+> scales and Hindi instruction, which contain calques that drive part of the WVS "collapse"
+> (decisions.md, D4 "Hand fixes"). Rebuild with `configs/translation_fixes.csv` and regenerate
+> forced-choice items for every checkpoint before quoting forced-choice ACS or TruthfulQA hi.
+
 **Forced-choice ACS** (JSD of option probabilities vs English, 0 = same answer distribution,
 1 = disjoint; n = 261: 111 WVS + 150 TruthfulQA)
 

@@ -121,6 +121,20 @@ blind check of 20 forward translations per language by a fluent speaker. Record 
 name, revision hash and decoding settings (beam 4) here once chosen, then delete the loser
 from `MT_CANDIDATES`.
 
+**Hand fixes for shared strings (2026-11-10).** The oracle pilots showed MADLAD calques in the
+WVS answer scales, in both languages: "A great deal" → "एक बड़ा सौदा" / "Um grande negócio" (a
+big business deal), "Quite a lot" → "बहुत कुछ" / "Um monte", "None at all" → "Nenhum de todos",
+and "No" → "नहीं (_N)" in Hindi; the Hindi instruction asks for the "favourite" (पसंदीदा) letter.
+On the 15 E069 confidence items the base model answered one option for nearly every
+institution (hi: A on 13/15; pt: C on 12/15; English mostly B), so most of that block's
+"collapse" was the scale wording. `configs/translation_fixes.csv` now overrides the MT for
+every WVS answer option (89), the 18 shared WVS lead-ins and the Hindi instruction (applied
+in `data/build.py`; the MT cache is unchanged). The fixes were drafted by Claude Opus 5.5 and
+still need a fluent speaker's check (or replacing with the official WVS-7 Hindi / Brazilian
+Portuguese questionnaires). Item-specific WVS text and TruthfulQA options keep the MT.
+Results before the fix are in `docs/results.md` under the 2026-10-21 base run; forced-choice
+numbers from after the rebuild supersede them.
+
 ## D5 · LLM judge (proposed, 2026-11-02)
 
 Choose the judge model for the LLM-as-judge baseline. It should be strong in all six

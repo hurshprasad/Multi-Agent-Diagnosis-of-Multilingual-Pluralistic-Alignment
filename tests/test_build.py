@@ -160,3 +160,60 @@ def test_read_sheet_accepts_excel_bom_and_semicolons(tmp_path):
     path.write_text("id,ok\nuf-1,yes\n", encoding="utf-8")
     with pytest.raises(ValueError, match="no item_id column"):
         read_sheet(path)
+
+
+def test_fix_translation_whole_string_and_per_line():
+    fixes = {"A great deal": "बहुत अधिक", "Lead-in about confidence?": "भरोसे के बारे में?"}
+    assert build.fix_translation("A great deal", "एक बड़ा सौदा", fixes) == "बहुत अधिक"
+    # One line of a multi-line stem: only that line changes, the item-specific line keeps MT.
+    assert (build.fix_translation("Lead-in about confidence?\nThe police?", "MT lead\nपुलिस?", fixes)
+            == "भरोसे के बारे में?\nपुलिस?")
+    assert build.fix_translation("Unrelated", "MT", fixes) == "MT"
+    assert build.fix_translation("Unrelated", None, fixes) is None
+    # Line structure lost by MT: leave it alone rather than misplace a line.
+    assert build.fix_translation("Lead-in about confidence?\nThe police?", "one line", fixes) == "one line"
+
+
+def test_rebuild_with_fixes_records_changes_and_drops_stale_generations(cfg, tmp_path):
+    from mpac.data.io import read_jsonl, write_jsonl
+
+    empty = tmp_path / "nofixes.csv"
+    empty.write_text("en,hi,pt,note\n", encoding="utf-8")
+    before = build.build_dataset(cfg, translate=fake_mt, fixes_path=empty)
+    wvs = next(it for it in before if it.meta["source"] == "wvs")
+    src = next(s for s in SOURCES if s.item_id == wvs.item_id)
+    gen_root = tmp_path / "generations"
+    for ck in ("base", "en_aligned"):
+        for lang in ("hi", "pt"):
+            write_jsonl(gen_root / "m" / ck / f"{lang}.jsonl",
+                        [{"item_id": it.item_id, "lang": lang} for it in before])
+
+    fixes = tmp_path / "fixes.csv"
+    with open(fixes, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["en", "hi", "pt", "note"])
+        w.writerow([src.options[0], "सही", "", "test"])          # hi only
+    after = build.build_dataset(cfg, translate=fake_mt, fixes_path=fixes)
+    changed = build.build_dataset.last_changed
+    assert (wvs.item_id, "hi") in changed and all(lang == "hi" for _, lang in changed)
+    assert "सही" in next(it for it in after if it.item_id == wvs.item_id).prompts["hi"]
+    assert len(list(read_jsonl(tmp_path / "items" / "changed_prompts.jsonl"))) == len(changed)
+    # Unchanged rebuild: nothing new recorded.
+    build.build_dataset(cfg, translate=fake_mt, fixes_path=fixes)
+    assert build.build_dataset.last_changed == []
+
+    moved = build.drop_generations(gen_root, changed)
+    assert len(moved) == 2                                       # hi in both checkpoints
+    for ck in ("base", "en_aligned"):
+        hi = {r["item_id"] for r in read_jsonl(gen_root / "m" / ck / "hi.jsonl")}
+        pt = {r["item_id"] for r in read_jsonl(gen_root / "m" / ck / "pt.jsonl")}
+        assert wvs.item_id not in hi and wvs.item_id in pt
+        assert {r["item_id"] for r in read_jsonl(gen_root / "m" / ck / "hi.replaced.jsonl")} \
+            == {iid for iid, _ in changed}
+
+
+def test_repo_fix_table_loads_and_covers_the_confidence_scale():
+    fixes = build.load_fixes()
+    assert fixes["hi"]["A great deal"] == "बहुत अधिक"
+    assert fixes["pt"]["A great deal"] == "Muita"
+    assert "Answer with only the letter of your choice." not in fixes["pt"]   # pt MT was fine

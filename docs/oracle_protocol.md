@@ -144,7 +144,11 @@ all on `aligned` (hi raw agreement 8/15, below the 0.6 kappa gate whatever the m
 `collapsed_vs_reference` disagreed on 4/30 rows, 3 of them Opus's bad-translation flags. Llama
 read `aligned` as "same as English": same wrong TruthfulQA answer in both languages → aligned;
 a different survey option → not aligned; garbled Hindi called "cut off" → aligned. It flagged
-no bad translations in either pilot. Opus and Sonnet agreed on nearly every row. The rubric
+no bad translations in either pilot. Opus and Sonnet agreed on nearly every row. The known-answer
+check agrees: on the 10 TruthfulQA rows left after 3 bad translations, `aligned` matched the
+answer key for Opus 10/10 and Llama 7/10 (Sonnet 3/3 on the rows it adjudicated); all three
+were 7/7 on not flagging same-option rows as collapsed; no row was right in English and wrong
+in Hindi/Portuguese, so collapse recall couldn't be checked. The rubric
 didn't change; tuning Llama's prompt until kappa passes would fit the pilot, so:
 
 - The open annotator is now Aya Expanse 32B (Cohere, trained for 23 languages including Hindi

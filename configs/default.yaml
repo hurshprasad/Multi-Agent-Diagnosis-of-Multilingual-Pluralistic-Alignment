@@ -59,7 +59,7 @@ oracle:                          # proposed protocol (D7, docs/oracle_protocol.m
   llm_panel:                     # LLM annotators when there are no people (data/llm_oracle.py)
     annotators:                  # two families; neither may be the System 6 judge (D5)
       opus: claude-opus-5-5
-      llama: meta-llama/Llama-3.3-70B-Instruct
+      aya: CohereLabs/aya-expanse-32b   # llm_pilot3 on; Llama-3.3-70B failed llm_pilot and llm_pilot2
     adjudicator: {sonnet: claude-sonnet-5-5}
     effort: high                 # Claude reasoning effort for labelling
 

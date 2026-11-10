@@ -154,7 +154,7 @@ check native multilingual sets before reusing this.
 Full protocol and annotator guidelines: `docs/oracle_protocol.md`. Tooling: `data/oracle.py`.
 
 **Solo pilot (2026-11-02, Hursh): LLM panel instead of human annotators**, because there are
-none. Claude Opus 5.5 and Llama-3.3-70B-Instruct label every row with the protocol rubric,
+none. Claude Opus 5.5 and Aya Expanse 32B (Llama-3.3-70B-Instruct in the first two pilots) label every row with the protocol rubric,
 Claude Sonnet 5.5 adjudicates disagreements (`data/llm_oracle.py`, notebook 05 part A2).
 Same kappa ≥ 0.6 gate, same tune/test rule. The two annotators come from different vendors and
 neither is the System 6 judge (D5). With no fluent human available, the panel is validated

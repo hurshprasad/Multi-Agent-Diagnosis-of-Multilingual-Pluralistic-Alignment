@@ -96,7 +96,8 @@ vaguer, off-topic).
 No annotators are available, so two LLMs act as the two annotators
 (`data/llm_oracle.py`, notebook 05 part A2, `oracle.llm_panel` in the config):
 
-- **Annotators:** Claude Opus 5.5 (`opus`) and Llama-3.3-70B-Instruct in 4-bit (`llama`).
+- **Annotators:** Claude Opus 5.5 (`opus`) and Aya Expanse 32B (Cohere) in 4-bit (`aya`), from
+  `llm_pilot3` on; Llama-3.3-70B-Instruct (`llama`) in `llm_pilot` and `llm_pilot2`.
   They come from different vendors and families, and neither is the Qwen model under test.
   **Adjudicator:** Claude Sonnet 5.5, only on rows the two disagree on.
 - **Not the System 6 judge.** The LLM-as-judge baseline uses a model that isn't on the panel
@@ -135,3 +136,20 @@ bad translations (MADLAD), all confirmed by Sonnet where adjudicated. Changes fo
   the answer key no longer applies.
 - Rows the adjudicator alone marks as a bad translation are now dropped too, instead of
   resolving to its forced "no / no".
+
+### LLM pilot 2 → pilot 3 (2026-11-10, solo pilot)
+
+`llm_pilot2` (15 rows per language): Opus and Llama disagreed on 9/15 hi and 4/15 pt rows, almost
+all on `aligned` (hi raw agreement 8/15, below the 0.6 kappa gate whatever the marginals).
+`collapsed_vs_reference` disagreed on 4/30 rows, 3 of them Opus's bad-translation flags. Llama
+read `aligned` as "same as English": same wrong TruthfulQA answer in both languages → aligned;
+a different survey option → not aligned; garbled Hindi called "cut off" → aligned. It flagged
+no bad translations in either pilot. Opus and Sonnet agreed on nearly every row. The rubric
+didn't change; tuning Llama's prompt until kappa passes would fit the pilot, so:
+
+- The open annotator is now Aya Expanse 32B (Cohere, trained for 23 languages including Hindi
+  and Portuguese; a third vendor, not Qwen). `llm_pilot3` is 30 new rows.
+- Adjudication is per field: the adjudicator decides only the fields the annotators disagree
+  on (`resolve`). In `llm_pilot2` Sonnet's adjudication of an `aligned` disagreement also
+  flipped an agreed `collapsed_vs_reference` (hi tqa-0027, different wrong answers) to no,
+  against the rubric.

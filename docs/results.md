@@ -177,3 +177,35 @@ Reading:
 - Caveat: held-out hi / pt pairs are machine-translated by the same MT model as the training
   pairs, so multi_aligned's Hindi gain may partly be familiarity with MADLAD's Hindi. Chosen
   and rejected are both translated, which cancels style shared by both, but not all of it.
+
+### After the translation hand fixes (all checkpoints), 2026-11-10
+
+Rebuilt with `configs/translation_fixes.csv` (WVS answer scales and lead-ins, Hindi
+instruction; decisions.md D4). 372 prompts changed (hi: 111 WVS + 150 TruthfulQA; pt: 111 WVS)
+and were regenerated for every checkpoint. Free-text items and English are unchanged, so the
+free-text rows below are the same runs as before.
+
+| | forced-choice ACS hi / pt | WVS ACS hi / pt | free-text ACS hi / pt | TruthfulQA en → hi | en → pt |
+|---|---|---|---|---|---|
+| base | 0.376 / 0.224 | 0.348 / 0.309 | 0.343 / 0.223 | 0.673 → 0.507 (36 lost / 11 gained, p 0.0003) | 0.673 → 0.687 (p 0.80) |
+| en_aligned | 0.377 / 0.228 | 0.339 / 0.304 | 0.344 / 0.218 | 0.667 → 0.467 (39 / 9, p < 0.0001) | 0.667 → 0.680 (p 0.81) |
+| multi_aligned | 0.377 / 0.230 | 0.353 / 0.306 | 0.348 / 0.217 | 0.680 → 0.520 (36 / 12, p 0.0007) | 0.680 → 0.693 (p 0.81) |
+
+TruthfulQA, verified subset (n 33): hi 0.58 → 0.45 (base, en_aligned) and 0.61 → 0.48
+(multi_aligned), 6 lost / 2 gained, p 0.29; pt flat.
+
+Effect of the fixes on base: WVS ACS hi 0.406 → 0.348, pt 0.329 → 0.309; Hindi TruthfulQA
+0.500 → 0.507; pt TruthfulQA identical (its prompts didn't change, so regeneration is
+deterministic). On the 15 E069 confidence items Hindi now matches English on 8/15 (was 2/15,
+13/15 on the mistranslated option A); Portuguese still gives nearly one answer to every
+institution, now A "Muita" on 13/15 (was C on 12/15), so the pt scale wording, ours included,
+still drives that block. Base WVS ACS without E069: hi 0.352, pt 0.283.
+
+Reading:
+- **The MT calques inflated WVS collapse but weren't most of it.** Hindi WVS ACS fell 14%,
+  Portuguese 6%; both stay far above zero, and Hindi honesty collapse (−17 points on
+  TruthfulQA, p < 0.001) is unchanged in size.
+- **E069 in Portuguese is wording-sensitive**: report pluralistic-value ACS with and without
+  it, and replace our pt scale with the official WVS-7 Brazilian wording or a native speaker's
+  choice (decided once, not tuned to match English).
+- Checkpoint-vs-checkpoint tests after the fix: pending (notebook 01, last cell).

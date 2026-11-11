@@ -56,6 +56,8 @@ translation:
 oracle:                          # proposed protocol (D7, docs/oracle_protocol.md)
   annotators_per_item: 2
   min_kappa: 0.6                 # below this, revise the guidelines before labelling more
+  gate_fields: [collapsed_vs_reference]   # fields the kappa gate applies to; Table 6 uses only this one
+                               # (aligned failed with two open annotators, docs/oracle_protocol.md)
   llm_panel:                     # LLM annotators when there are no people (data/llm_oracle.py)
     annotators:                  # two families; neither may be the System 6 judge (D5)
       opus: claude-opus-5-5

@@ -157,3 +157,22 @@ didn't change; tuning Llama's prompt until kappa passes would fit the pilot, so:
   on (`resolve`). In `llm_pilot2` Sonnet's adjudication of an `aligned` disagreement also
   flipped an agreed `collapsed_vs_reference` (hi tqa-0027, different wrong answers) to no,
   against the rubric.
+
+### LLM pilot 3 → main (2026-11-11, solo pilot): gate on `collapsed_vs_reference` only
+
+`llm_pilot3` (Opus + Aya Expanse 32B, Sonnet adjudicating): `collapsed_vs_reference` kappa 0.66
+hi (raw agreement 0.83, n 12 after bad translations) and 1.00 pt (n 15); `aligned` kappa −0.17
+hi, 0.00 pt. Aya repeated Llama's reading of `aligned` as "same as English" (same wrong
+TruthfulQA answer → aligned; a different survey option → not aligned) and on honesty items
+didn't know the true answer (called the music myth "correct"); known-answer `aligned` accuracy
+6/8 vs Opus 8/8.
+
+**Change, made after seeing three pilots:** the kappa gate now applies to
+`collapsed_vs_reference` only (`oracle.gate_fields`). Reason: the gate protects the labels the
+evaluators are scored against, and Table 6 uses only `collapsed_vs_reference` (`to_oracle`);
+no table uses `aligned`. `aligned` is still labelled, adjudicated and reported with its kappa,
+and must not be used for claims. Two open models from different vendors failing on the same
+field suggests the field asks for judgement (and, for honesty, world knowledge) that 30-70B
+open models don't apply reliably, rather than a rubric ambiguity; a fourth annotator was not
+tried. Caveat for the paper: hi passes on n = 12 at 0.66, just over the bar, so report the main
+round's kappa too (it will have ~400 rows per language).

@@ -213,4 +213,27 @@ Reading:
 - **E069 in Portuguese is wording-sensitive**: report pluralistic-value ACS with and without
   it, and replace our pt scale with the official WVS-7 Brazilian wording or a native speaker's
   choice (decided once, not tuned to match English).
-- Checkpoint-vs-checkpoint tests after the fix: pending (notebook 01, last cell).
+
+Checkpoint vs checkpoint after the fix (notebook 01, last cell; diff = later − earlier, 95%
+paired bootstrap CI, permutation p; TruthfulQA exact McNemar), Hindi, all items:
+
+| metric | base → en_aligned | base → multi_aligned | en_aligned → multi_aligned |
+|---|---|---|---|
+| forced-choice ACS, overall (n 261) | +0.002 [−0.010, 0.013], p 0.77 | +0.001 [−0.011, 0.013], p 0.82 | −0.000, p 0.95 |
+| forced-choice ACS, honesty (150) | +0.010 [−0.000, 0.020], p 0.07 | −0.001, p 0.86 | −0.011 [−0.023, −0.001], p 0.06 |
+| forced-choice ACS, pluralistic_value (111) | −0.009, p 0.46 | +0.005, p 0.67 | +0.014, p 0.11 |
+| free-text ACS, PLURAL (90) | +0.015 [0.002, 0.028], p 0.03 | **+0.026 [0.010, 0.042], p 0.002** | +0.010, p 0.19 |
+| free-text ACS, helpfulness (150) | −0.007, p 0.23 | −0.007, p 0.27 | 0.000, p 0.99 |
+| TruthfulQA accuracy, hi | 0.507 → 0.513 (1 lost / 2 gained), p 1.0 | 0.507 → 0.520 (1 / 3), p 0.63 | 0.513 → 0.520 (1 / 2), p 1.0 |
+
+Portuguese: every change within ±0.013; the only p < 0.05 are forced-choice honesty base →
+multi_aligned (+0.012, p 0.045, unchanged by the fix since pt TruthfulQA prompts didn't change)
+and, on the verified subset, PLURAL free text en_aligned → multi_aligned (+0.031, n 17, p 0.02).
+Verified subset, Hindi: nothing significant.
+
+- **Conclusion unchanged and cleaner: neither DPO run moved forced-choice collapse.** The
+  pre-fix hint that English-only DPO increased Hindi forced-choice collapse (+0.011, p 0.04)
+  and cost Hindi TruthfulQA items (−5, p 0.06) is gone; both came from the mistranslated
+  instruction. The one robust DPO effect is still Hindi PLURAL free text moving further from
+  English (+0.026, p 0.002 for multi_aligned), the trained objective; free-text items were
+  not affected by the fix.

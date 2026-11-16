@@ -267,6 +267,78 @@ none). Aya's `aligned` is wrong on 27% of rows, as in the pilots: `aligned` stay
 unused. Pluralistic-value and helpfulness labels rest on panel agreement alone.
 Main-round kappa: TODO (notebook 05 part B).
 
+### Table 6: evaluator systems vs the LLM-panel oracle (qwen2.5-7b base), 2026-11-16
+
+`analysis/evaluators.py: table6`, notebook 05 part C, `SOURCE = "llm"` (round `llm_main`).
+826 labelled rows after 56 bad translations: 285 tune (thresholds only), **541 test** (202
+collapsed). Thresholds tuned per (language, signal) on tune labels: hi/options 0.302 (77 labels,
+27 collapsed), pt/options 0.256 (71, 18), hi/embedding 0.381 (66, 45), pt/embedding 0.276
+(71, 11). System 6: Claude Haiku 5.5, 1,002 calls, 0 errors. Wrong-language free-text responses
+(fastText): hi 13, pt 18.
+
+| system | precision | recall | F1 | evaluations | LLM tokens |
+|---|---|---|---|---|---|
+| 4 single evaluator | 0.792 | 0.658 | 0.719 | 1,002 | 0 |
+| 5 fixed multi-agent | 0.792 | 0.658 | 0.719 | 1,002 | 0 |
+| 6 LLM-judge multi-agent | **0.837** | **0.787** | **0.811** | 1,002 | 1,405,972 |
+| 7 adaptive lifecycle | 0.793 | 0.644 | 0.710 | 4,050 | 0 |
+
+Adaptive run: population 8–9 over 10 cycles; 10 spawns, 80 retains, 1 destroy; final agents
+one specialist per (language × objective), a per-language generalist and one hi–pt consistency
+agent. Budget: the adaptive run's 4,050 evaluations; systems 4–6 reached 1,002 because that is
+every (language, item) pair once.
+
+F1 by signal (test; review sheet `table6_llm_review.csv`):
+
+| | n (collapsed) | 4 / 5 cheap signal | 6 LLM judge | 7 adaptive |
+|---|---|---|---|---|
+| hi, forced choice (JSD) | 141 (61) | **0.950** | 0.893 | 0.950 |
+| pt, forced choice (JSD) | 154 (43) | **0.909** | 0.743 | 0.884 |
+| hi, free text (LaBSE) | 116 (78) | 0.496 | **0.847** | 0.487 |
+| pt, free text (LaBSE) | 130 (20) | 0.311 | **0.550** | 0.311 |
+
+Oracle agreement (main round, `collapsed_vs_reference`, all 441 rows per language incl. bad
+translations): hi κ 0.65 (raw 0.83), pt κ 0.58 (raw 0.84); `aligned` hi 0.43, pt 0.23 (not
+gated). On rows Table 6 uses (bad translations dropped): TODO. Every disagreement adjudicated,
+0 unresolved. Decided before seeing the dropped-row kappa: report it as is, no re-labelling
+(the 0.6 gate decides whether a main round starts; pilot 3 passed it).
+
+Reading:
+- **Cheap signals reach 88% of the LLM judge's F1 at no LLM cost overall, but the average
+  hides two opposite results.** On forced-choice items the exact signal beats the judge (hi
+  0.95 vs 0.89, pt 0.91 vs 0.74); on free text the embedding signal fails (0.50 / 0.31) and the
+  judge is far better (0.85 / 0.55). D2 answered: LaBSE divergence tracks paraphrase distance,
+  not alignment-relevant change.
+- **The lifecycle adds nothing over a single evaluator** (F1 0.710 vs 0.719; it missed 9 test
+  items). By design every agent reads the same deterministic divergence through the same
+  thresholds, so spawn / retain / destroy can only change which items are looked at, never the
+  verdict; repeated evaluations of one item return the same answer. The cost advantage is the
+  cheap signal's, not the population's. For the lifecycle to matter, agents must differ in
+  signal (e.g. a judge agent spawned where tune-label utility shows the embedding agent fails).
+- **Hypothesis, not a result:** route forced-choice cells to JSD and free-text cells to the
+  judge (about half the judge's tokens). The rule was suggested by the test split, so it must
+  be chosen on tune labels and scored once on test before it is reported.
+- Caveats: (1) the oracle sees option probabilities and its rubric calls a different top option
+  collapse, so JSD agreeing with it on forced choice is partly by construction; the judge sees
+  text only. (2) The oracle is an LLM panel and System 6 an LLM: shared reading habits may favour
+  6; the panel is validated against answer keys on honesty only. (3) Truncation (below) affects
+  the free-text rows: Hindi free text is 67% collapsed by the oracle (78/116) vs pt 15%.
+
+**Truncation check** (free-text responses that used all 512 new tokens):
+
+| | en | hi (helpfulness / PLURAL) | pt (helpfulness / PLURAL) |
+|---|---|---|---|
+| base | 0.346 | **0.796** (0.680 / 0.989) | 0.458 (0.420 / 0.522) |
+| en_aligned | 0.350 | 0.796 (0.680 / 0.989) | 0.417 (0.400 / 0.444) |
+| multi_aligned | 0.367 | 0.821 (0.713 / 1.000) | 0.454 (0.420 / 0.511) |
+
+Nearly every Hindi PLURAL response is cut off. The oracle rubric says a cut-off response isn't
+collapse on that ground, and LaBSE reads only the first 256 tokens of each response, but Hindi
+covers less content in 512 tokens. Free-text results for Hindi (Table 6 free-text rows,
+free-text ACS, the +0.026 DPO effect on PLURAL) carry this caveat; the fix is regenerating free
+text with ≥ 1,024 new tokens in every language and re-labelling those rows. Forced-choice
+results are unaffected.
+
 ### Table 7: representation similarity (qwen2.5-7b, all checkpoints), 2026-11-15
 
 `interp/activations.py: run_table7`, notebook 06. Last prompt token, every eval item (n 501),

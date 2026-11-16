@@ -415,6 +415,16 @@ def default_layers(n_hidden_states: int) -> list[int]:
     return sorted({max(1, n // 3), n // 2, min(n, 2 * n // 3)})
 
 
+def table9_name(lang: str, objectives: list[str] | None, layers: list[int],
+                default: list[int]) -> str:
+    """Result name; non-default layers get their own file (e.g. `_L22-25`) instead of
+    overwriting the default-layer run."""
+    name = f"table9_{lang}" + (f"_{'_'.join(objectives)}" if objectives else "")
+    if sorted(layers) != sorted(default):
+        name += "_L" + "-".join(str(x) for x in sorted(layers))
+    return name
+
+
 def run_table9(cfg: dict, model_entry: dict, lang: str, objectives: list[str] | None = None,
                layers: list[int] | None = None, alphas=(0.5, 1.0, 2.0), tok=None, model=None,
                batch_size: int = 8) -> dict:
@@ -438,9 +448,10 @@ def run_table9(cfg: dict, model_entry: dict, lang: str, objectives: list[str] | 
             acts[(ck, lg)] = load_npz(p)
     if ("base", ref) not in acts or ("base", lang) not in acts:
         raise FileNotFoundError("no base activations; run run_table7 (notebook 06, Table 7) first")
-    layers = layers or default_layers(acts[("base", ref)]["h"].shape[0])
+    default = default_layers(acts[("base", ref)]["h"].shape[0])
+    layers = layers or default
     out = table9(cfg, model, tok, items, acts, splits, lang, layers, list(alphas),
                  objectives=objectives, batch_size=batch_size, seed=cfg["project"]["seed"])
-    name = f"table9_{lang}" + (f"_{'_'.join(objectives)}" if objectives else "")
+    name = table9_name(lang, objectives, layers, default)
     out["path"] = str(save_results(cfg, model_entry["id"], "interp", name, out))
     return out

@@ -138,3 +138,12 @@ def test_runners_on_drive_layout(tmp_path, monkeypatch):
     assert (tmp_path / "activations" / "synthetic" / "base" / "hi.npz").exists()
     t9 = run_table9(cfg, entry, "hi", ["honesty"], alphas=[1.0], tok=tok, model=model)
     assert t9["n_test"] > 0 and t9["path"].endswith("table9_hi_honesty.json")
+
+
+def test_table9_name_keeps_default_and_extra_layers_apart():
+    from mpac.interp.activations import default_layers, table9_name
+    d = default_layers(29)
+    assert d == [9, 14, 18]
+    assert table9_name("hi", ["honesty"], d, d) == "table9_hi_honesty"
+    assert table9_name("hi", ["honesty"], [25, 22], d) == "table9_hi_honesty_L22-25"
+    assert table9_name("pt", None, [22], d) == "table9_pt_L22"

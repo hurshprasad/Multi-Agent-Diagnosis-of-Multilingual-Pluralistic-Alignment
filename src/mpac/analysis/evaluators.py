@@ -249,3 +249,67 @@ def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
     out["review_path"] = str(review)
     out["n_pairs_systems_differ"] = sum(r["systems_differ"] for r in rows)
     return out
+
+
+# --------------------------------------------------------------------------- routing (post hoc)
+
+CHEAP = "4 single evaluator"
+JUDGE = "6 LLM-judge multi-agent"
+
+
+def _prf(pairs: list[tuple[bool, bool]]) -> dict:
+    """[(flagged, oracle)] -> precision, recall, f1, n, n_collapsed."""
+    tp = sum(f and y for f, y in pairs)
+    nf, ny = sum(f for f, _ in pairs), sum(y for _, y in pairs)
+    p, r = (tp / nf if nf else 0.0), (tp / ny if ny else 0.0)
+    return {"precision": p, "recall": r, "f1": 2 * p * r / (p + r) if p + r else 0.0,
+            "n": len(pairs), "n_collapsed": ny}
+
+
+def route_by_cell(review: list[dict], judge_tokens: float | None = None,
+                  cheap: str = CHEAP, judge: str = JUDGE) -> dict:
+    """Routed evaluator from the Table 6 review sheet (`table6_<source>_review.csv` rows).
+
+    Rule, fixed before scoring: per (language, signal) cell, use the judge's verdict only if its
+    F1 on **tune** labels is strictly higher than the cheap signal's; otherwise (ties, or no
+    collapsed tune label) keep the zero-cost signal. The routed system is then scored once on
+    **test** labels, next to both inputs scored the same way. Unvisited pairs count as not
+    flagged. `judge_tokens` (System 6's total) gives a cost estimate: its mean tokens per pair
+    times the pairs routed to the judge. Suggested by the test split (results.md, Table 6), so
+    report it as a follow-up system, with this rule."""
+    def flag(r, name):
+        return str(r.get(f"{name} | flagged", "")).strip() == "True"
+
+    def label(r):
+        v = str(r.get("oracle_collapsed", "")).strip()
+        return None if v not in ("True", "False") else v == "True"
+
+    cells = sorted({(r["lang"], r["signal"]) for r in review})
+    route, tune_scores = {}, {}
+    for cell in cells:
+        rows = [r for r in review if (r["lang"], r["signal"]) == cell and r.get("split") == "tune"
+                and label(r) is not None]
+        c = _prf([(flag(r, cheap), label(r)) for r in rows])
+        j = _prf([(flag(r, judge), label(r)) for r in rows])
+        tune_scores[f"{cell[0]}/{cell[1]}"] = {"cheap_f1": c["f1"], "judge_f1": j["f1"],
+                                               "n": c["n"], "n_collapsed": c["n_collapsed"]}
+        route[cell] = judge if c["n_collapsed"] and j["f1"] > c["f1"] else cheap
+
+    def verdict(r, name):
+        return flag(r, route[(r["lang"], r["signal"])]) if name == "routed" else flag(r, name)
+
+    test = [r for r in review if r.get("split") == "test" and label(r) is not None]
+    out = {"route": {f"{lang}/{sig}": name for (lang, sig), name in route.items()},
+           "tune": tune_scores, "test": {}, "test_by_cell": {}}
+    for name in ("routed", cheap, judge):
+        out["test"][name] = _prf([(verdict(r, name), label(r)) for r in test])
+        for cell in cells:
+            rows = [r for r in test if (r["lang"], r["signal"]) == cell]
+            out["test_by_cell"].setdefault(f"{cell[0]}/{cell[1]}", {})[name] = \
+                _prf([(verdict(r, name), label(r)) for r in rows])["f1"]
+    n_judged = sum(str(r.get(f"{judge} | n_evals", "0")) not in ("", "0") for r in review)
+    n_routed = sum(route[(r["lang"], r["signal"])] == judge for r in review)
+    out["pairs_to_judge"] = {"routed": n_routed, "all": len(review)}
+    if judge_tokens is not None and n_judged:
+        out["tokens_estimate"] = {"routed": judge_tokens / n_judged * n_routed, "judge": judge_tokens}
+    return out

@@ -91,3 +91,29 @@ def test_table6_with_llm_judge(cfg, tmp_path):
     cfg["baselines"]["llm_judge"]["model"] = cfg["oracle"]["llm_panel"]["annotators"]["opus"]
     with pytest.raises(ValueError, match="oracle panel"):
         make_judge(cfg)
+
+
+def test_route_by_cell_chooses_on_tune_and_scores_on_test():
+    from mpac.analysis.evaluators import CHEAP, JUDGE, route_by_cell
+
+    def row(lang, sig, split, y, cheap, judge):
+        return {"lang": lang, "signal": sig, "split": split, "oracle_collapsed": str(y),
+                f"{CHEAP} | flagged": str(cheap), f"{JUDGE} | flagged": str(judge),
+                f"{JUDGE} | n_evals": "1"}
+    rows = []
+    for split in ("tune", "test"):
+        # options: the cheap signal is right, the judge misses half; embedding: the reverse
+        rows += [row("hi", "options", split, True, True, i % 2 == 0) for i in range(4)]
+        rows += [row("hi", "options", split, False, False, False) for _ in range(4)]
+        rows += [row("hi", "embedding", split, True, i % 2 == 0, True) for i in range(4)]
+        rows += [row("hi", "embedding", split, False, True, False) for _ in range(4)]
+    rows.append(row("hi", "embedding", "", "", True, True))   # unlabelled: costs, isn't scored
+    out = route_by_cell(rows, judge_tokens=1000.0)
+    assert out["route"] == {"hi/embedding": JUDGE, "hi/options": CHEAP}
+    assert out["test"]["routed"]["f1"] == 1.0
+    assert out["test"]["routed"]["f1"] > max(out["test"][CHEAP]["f1"], out["test"][JUDGE]["f1"])
+    assert out["pairs_to_judge"] == {"routed": 17, "all": 33}
+    assert out["tokens_estimate"]["routed"] == 1000.0 / 33 * 17
+    # a tie on tune keeps the zero-cost signal
+    tie = [row("pt", "options", "tune", True, True, True), row("pt", "options", "test", True, True, False)]
+    assert route_by_cell(tie)["route"] == {"pt/options": CHEAP}

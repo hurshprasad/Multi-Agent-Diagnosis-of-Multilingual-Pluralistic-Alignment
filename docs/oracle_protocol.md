@@ -176,3 +176,19 @@ field suggests the field asks for judgement (and, for honesty, world knowledge) 
 open models don't apply reliably, rather than a rubric ambiguity; a fourth annotator was not
 tried. Caveat for the paper: hi passes on n = 12 at 0.66, just over the bar, so report the main
 round's kappa too (it will have ~400 rows per language).
+
+### llm_main: Aya replies without JSON (2026-11-15, solo pilot)
+
+First pass of `llm_main` (441 rows per language): Opus labelled every row (bad translations
+hi 38, pt 12). Aya labelled 372 hi / 378 pt; the other 69 / 63 replies were reasoning with no
+JSON, mostly long structured rationales on long free-text rows, well past the 150 words asked
+for (the reply cap is 1,024 new tokens). Greedy decoding would repeat them, and rows need both
+annotators (`resolve(min_annotators=2)`), so the failures would have dropped out of the oracle,
+skewed towards long rows.
+
+Change (parsing only, rubric and prompt unchanged): a reply without the labels JSON gets a
+second short pass (`parse_or_finish`): the model's own reasoning, then `{"aligned": ` prefilled,
+completed by the same model, greedy, up to 96 tokens. The label is still Aya's, given after its
+own (possibly cut-off) reasoning. Such rows carry `forced_json` and `hit_limit` in
+`filled/aya.jsonl`; report how many, and check that Aya–Opus agreement on them isn't far below
+the rest. Rows already labelled were not re-sent.

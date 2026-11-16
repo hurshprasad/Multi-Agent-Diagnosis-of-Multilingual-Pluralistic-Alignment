@@ -193,7 +193,7 @@ def require_gpu(min_gb: float, total_gb: float | None = None) -> float:
 
 def hf_annotator(model_id: str = "meta-llama/Llama-3.3-70B-Instruct", batch_size: int = 8,
                  max_new_tokens: int = 1024, reason: bool = True,
-                 min_gpu_gb: float = 45.0) -> Annotate:
+                 min_gpu_gb: float = 45.0, finish_tokens: int = 96) -> Annotate:
     """Open model on the Colab GPU (4-bit), greedy, JSON parsed from the reply. With `reason`
     it writes a short rationale before the JSON (llm_pilot2 on; llm_pilot answered JSON only and
     read the responses too shallowly). Llama-3.3-70B in 4-bit is ~43 GB with fp16 embeddings: an
@@ -206,6 +206,21 @@ def hf_annotator(model_id: str = "meta-llama/Llama-3.3-70B-Instruct", batch_size
     require_gpu(min_gpu_gb)
     tok, model = load_model(model_id, load_in_4bit=True)
 
+    def generate(texts: list[str], max_new: int) -> list[tuple[str, int, int]]:
+        enc = tok(texts, return_tensors="pt", padding=True,
+                  add_special_tokens=False).to(model.device)
+        with torch.no_grad():
+            gen = model.generate(**enc, max_new_tokens=max_new, do_sample=False,
+                                 pad_token_id=tok.pad_token_id)
+        n_in = enc["input_ids"].shape[1]
+        out = []
+        for j, row in enumerate(gen):
+            new = row[n_in:]
+            n_new = int((new != tok.pad_token_id).sum())
+            out.append((tok.decode(new, skip_special_tokens=True),
+                        int(enc["attention_mask"][j].sum()) + n_new, n_new))
+        return out
+
     def annotate(prompts: list[str]) -> list[dict]:
         out = []
         for i in range(0, len(prompts), batch_size):
@@ -214,24 +229,50 @@ def hf_annotator(model_id: str = "meta-llama/Llama-3.3-70B-Instruct", batch_size
             texts = [tok.apply_chat_template(
                 [{"role": "system", "content": ORACLE_SYSTEM}, {"role": "user", "content": p}],
                 tokenize=False, add_generation_prompt=True) for p in batch]
-            enc = tok(texts, return_tensors="pt", padding=True,
-                      add_special_tokens=False).to(model.device)
-            with torch.no_grad():
-                gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
-                                     pad_token_id=tok.pad_token_id)
-            n_in = enc["input_ids"].shape[1]
-            for j, row in enumerate(gen):
-                new = row[n_in:]
-                text = tok.decode(new, skip_special_tokens=True)
-                tokens = int(enc["attention_mask"][j].sum()) + int((new != tok.pad_token_id).sum())
-                try:
-                    out.append({**parse_reply(text), "cost_tokens": tokens, "model": model_id,
-                                "reasoning": text[:text.rfind("{")].strip()[-1500:]})
-                except ValueError as e:
-                    out.append({"error": str(e), "raw": text[:500], "cost_tokens": tokens})
+            out.extend(parse_or_finish(texts, generate, max_new_tokens, model_id,
+                                       finish_tokens if reason else 0))
         return out
 
     return annotate
+
+
+# Prefilled after an open model's reasoning when its reply has no JSON (llm_main: Aya ran past
+# max_new_tokens on long rows), so the model completes its own labels instead of the row erroring.
+JSON_PREFILL = '\n\n{"aligned": '
+
+
+def parse_or_finish(texts: list[str], generate: Callable[[list[str], int], list[tuple[str, int, int]]],
+                    max_new_tokens: int, model_id: str, finish_tokens: int = 96) -> list[dict]:
+    """Generate one reply per chat text and parse its JSON. A reply without the JSON gets a
+    second, short pass: its own reasoning plus JSON_PREFILL, which the model completes.
+    `generate(texts, max_new)` -> (decoded new text, prompt + new tokens, new tokens) per text.
+    Replies carry `hit_limit` (the reasoning used all of max_new_tokens) and `forced_json`."""
+    first = generate(texts, max_new_tokens)
+    out: list[dict] = []
+    retry = []
+    for j, (text, tokens, n_new) in enumerate(first):
+        hit = n_new >= max_new_tokens
+        try:
+            out.append({**parse_reply(text), "cost_tokens": tokens, "model": model_id,
+                        "hit_limit": hit, "reasoning": text[:text.rfind("{")].strip()[-1500:]})
+        except ValueError as e:
+            out.append({"error": str(e), "raw": f"{text[:300]} … {text[-500:]}",
+                        "cost_tokens": tokens, "hit_limit": hit})
+            retry.append(j)
+    if retry and finish_tokens:
+        second = generate([texts[j] + first[j][0].rstrip() + JSON_PREFILL for j in retry],
+                          finish_tokens)
+        for j, (cont, tokens2, _) in zip(retry, second):
+            text = first[j][0]
+            try:
+                out[j] = {**parse_reply(JSON_PREFILL.lstrip() + cont),
+                          "cost_tokens": first[j][1] + tokens2, "model": model_id,
+                          "hit_limit": out[j]["hit_limit"], "forced_json": True,
+                          "reasoning": text.strip()[-1500:]}
+            except ValueError as e:
+                out[j]["error"] = f"{out[j]['error']}; forced JSON: {e}"
+                out[j]["cost_tokens"] += tokens2
+    return out
 
 
 def _row_key(r: dict) -> tuple:
@@ -290,6 +331,7 @@ def _label_rows(rows: list[dict], name: str, annotate: Annotate, filled_dir: Pat
     return {"rows": len(rows), "labelled": sum("error" not in x for x in recs),
             "errors": sum("error" in x for x in recs),
             "bad_translation": sum(bool(x.get("bad_translation")) for x in recs),
+            "forced_json": sum(bool(x.get("forced_json")) and "error" not in x for x in recs),
             "cost_tokens": sum(x.get("cost_tokens", 0) for x in recs)}
 
 

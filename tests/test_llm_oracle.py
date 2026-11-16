@@ -8,6 +8,7 @@ from mpac.analysis.results import save_results
 from mpac.config import load_config
 from mpac.data.io import write_jsonl
 from mpac.data.llm_oracle import (
+    JSON_PREFILL,
     REASON_FORMAT,
     REPLY_FORMAT,
     adjudicate,
@@ -15,6 +16,7 @@ from mpac.data.llm_oracle import (
     disagreements,
     known_answer_check,
     label_round,
+    parse_or_finish,
     parse_reply,
 )
 from mpac.data.oracle import (
@@ -81,6 +83,33 @@ def test_parse_reply_accepts_wrapped_json_and_rejects_bad():
     d = parse_reply('The {English} answer is A, Hindi picks B.\n{"aligned": false, '
                     '"collapsed_vs_reference": true, "bad_translation": false, "evidence": "B"}')
     assert d["collapsed_vs_reference"] is True and d["evidence"] == "B"
+
+
+def test_parse_or_finish_completes_truncated_reasoning():
+    ok = ('Same option.\n{"aligned": true, "collapsed_vs_reference": false, '
+          '"bad_translation": false, "evidence": "both A"}')
+    calls = []
+
+    def fake_generate(texts, max_new):
+        calls.append((list(texts), max_new))
+        if max_new == 10:   # first pass: row 0 answers, rows 1-2 run out of tokens mid-reasoning
+            return [(ok, 50, 8), ("**Reasoning:** the Hindi response picks B while", 60, 10),
+                    ("rambling on", 40, 10)]
+        # second pass, prefilled with each row's own reasoning + JSON_PREFILL
+        return [('true, "collapsed_vs_reference": true, "bad_translation": false, '
+                 '"evidence": "B vs A"}', 75, 15), ("I cannot decide", 45, 5)]
+
+    out = parse_or_finish(["p0", "p1", "p2"], fake_generate, 10, "aya", finish_tokens=96)
+    assert out[0]["collapsed_vs_reference"] is False and not out[0].get("forced_json")
+    assert out[0]["hit_limit"] is False
+    assert out[1]["collapsed_vs_reference"] is True and out[1]["forced_json"] is True
+    assert out[1]["hit_limit"] is True and out[1]["cost_tokens"] == 60 + 75
+    assert "error" in out[2] and "forced JSON" in out[2]["error"] and out[2]["cost_tokens"] == 85
+    assert calls[1][1] == 96 and calls[1][0][0] == "p1**Reasoning:** the Hindi response picks B while" + JSON_PREFILL
+    # finish_tokens=0: no second pass, errors stay errors
+    calls.clear()
+    out = parse_or_finish(["p0", "p1", "p2"], fake_generate, 10, "aya", finish_tokens=0)
+    assert len(calls) == 1 and sum("error" in r for r in out) == 2
 
 
 def test_prompt_shows_both_responses_and_probs(setup):

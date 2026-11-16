@@ -67,3 +67,14 @@ def test_agent_skips_failed_items_and_rejects_bad_replies():
     with pytest.raises(ValueError):
         parse_judge({"divergence": "high", "collapse": True})
     assert parse_judge({"divergence": 1.7, "collapse": False})["divergence"] == 1.0
+
+
+def test_anthropic_api_key_from_env_or_clear_error(monkeypatch):
+    import pytest
+
+    from mpac.baselines.llm_judge import anthropic_api_key
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-test\n")
+    assert anthropic_api_key() == "sk-test"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    with pytest.raises(RuntimeError, match="Colab secrets"):
+        anthropic_api_key()   # no google.colab on CPU CI

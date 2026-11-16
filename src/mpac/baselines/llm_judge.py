@@ -77,6 +77,26 @@ def parse_judge(d: dict) -> dict:
             "evidence": str(d.get("evidence", ""))}
 
 
+def anthropic_api_key() -> str:
+    """ANTHROPIC_API_KEY from the environment, else from Colab secrets (access is granted per
+    notebook, and a notebook's setup cell may have run before it was), stripped of whitespace.
+    Raises with what to do instead of the SDK's "Could not resolve authentication method"."""
+    import os
+
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not key:
+        try:
+            from google.colab import userdata
+            key = (userdata.get("ANTHROPIC_API_KEY") or "").strip()
+        except Exception:   # not on Colab, secret missing, or notebook access not granted
+            key = ""
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set: add it to Colab secrets (key icon) and "
+                           "switch on notebook access for this notebook, or export it")
+    os.environ["ANTHROPIC_API_KEY"] = key
+    return key
+
+
 def anthropic_structured(model: str, effort: str, schema: dict, parse: Callable[[dict], dict],
                          workers: int = 16, max_tokens: int = 4000) -> Judge:
     """Claude through the Anthropic API with JSON constrained to `schema`, validated by
@@ -86,7 +106,7 @@ def anthropic_structured(model: str, effort: str, schema: dict, parse: Callable[
 
     import anthropic
 
-    client = anthropic.Anthropic(max_retries=5)
+    client = anthropic.Anthropic(api_key=anthropic_api_key(), max_retries=5)
 
     def one(p: tuple[str, str]) -> dict:
         system, user = p

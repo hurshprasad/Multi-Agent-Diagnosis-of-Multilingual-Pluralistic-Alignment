@@ -154,7 +154,9 @@ def anthropic_annotator(model: str = "claude-opus-5-5", effort: str = "high",
 
     import anthropic
 
-    client = anthropic.Anthropic(max_retries=5)
+    from mpac.baselines.llm_judge import anthropic_api_key
+
+    client = anthropic.Anthropic(api_key=anthropic_api_key(), max_retries=5)
 
     def one(prompt: str) -> dict:
         try:

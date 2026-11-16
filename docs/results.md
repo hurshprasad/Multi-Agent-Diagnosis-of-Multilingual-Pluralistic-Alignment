@@ -325,6 +325,16 @@ Reading:
   6; the panel is validated against answer keys on honesty only. (3) Truncation (below) affects
   the free-text rows: Hindi free text is 67% collapsed by the oracle (78/116) vs pt 15%.
 
+Review sheet (all 1,002 pairs): systems differ on 279, almost always 6 vs the rest; flags 316
+(4, 5), 383 (6), 311 (7). System 7 looked 3.6 times per pair on average (max 9) and at some
+pairs never, so its extra evaluations are repeats and its 5 fewer flags are unvisited pairs.
+- **The judge misses blatant forced-choice changes**: no collapse on hi wvs-D054 (JSD 0.999),
+  hi wvs-E115 (0.996), pt wvs-F115 (0.981), pt wvs-D059 (0.990). Its forced-choice weakness is
+  not only the by-construction advantage of JSD (caveat 1), which supports routing.
+- The cheap signal's misses sit near the threshold (hi wvs-E037 0.294 vs 0.302, hi wvs-D081
+  0.280); its false alarms are mostly pt free text just above 0.276.
+- Likely oracle error: hi wvs-E069_20 labelled collapsed with JSD 0.001 (same distribution).
+
 **Truncation check** (free-text responses that used all 512 new tokens):
 
 | | en | hi (helpfulness / PLURAL) | pt (helpfulness / PLURAL) |

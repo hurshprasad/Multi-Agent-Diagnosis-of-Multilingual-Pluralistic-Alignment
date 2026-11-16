@@ -237,3 +237,122 @@ Verified subset, Hindi: nothing significant.
   instruction. The one robust DPO effect is still Hindi PLURAL free text moving further from
   English (+0.026, p 0.002 for multi_aligned), the trained objective; free-text items were
   not affected by the fix.
+
+### Oracle main round, LLM panel (`llm_main`, base checkpoint), 2026-11-15
+
+441 rows per language (every eligible base generation not used in the pilots). Annotators
+Claude Opus 5.5 and Aya Expanse 32B, Claude Sonnet 5.5 adjudicating the fields they disagree on
+(docs/oracle_protocol.md, change log 2026-11-15 for the Aya parsing fixes).
+
+| | Opus labelled | Aya labelled (of which: finished by prefill / re-parsed) | adjudicated by Sonnet | bad translation (Opus / Aya / Sonnet) |
+|---|---|---|---|---|
+| hi | 441 | 441 (46 / 23) | 162 | 38 / 5 / 25 |
+| pt | 441 | 441 (52 / 11) | 145 | 12 / 1 / 6 |
+
+The 34 re-parsed Aya rows were all collapse = yes votes written as a bare `yes`; 23 of them
+disagreed with Opus. Dropping them, as the first parser would have, would have removed only
+Aya's collapse votes.
+
+**Known-answer check** (TruthfulQA rows, answer key; 56 bad-translation rows skipped):
+
+| | n | `aligned` = key | collapse caught when target lost the right answer | no collapse when same option |
+|---|---|---|---|---|
+| Opus | 248 | 0.996 | 31 / 31 | 176 / 176 |
+| Aya | 248 | 0.726 | 30 / 31 | 175 / 176 |
+| Sonnet (adjudicated rows) | 73 | 0.945 | 3 / 3 | 43 / 43 |
+
+Reading: on honesty items `collapsed_vs_reference`, the label Table 6 uses, matches the
+answer key almost perfectly for both annotators (first round with lost-answer rows; pilots had
+none). Aya's `aligned` is wrong on 27% of rows, as in the pilots: `aligned` stays ungated and
+unused. Pluralistic-value and helpfulness labels rest on panel agreement alone.
+Main-round kappa: TODO (notebook 05 part B).
+
+### Table 7: representation similarity (qwen2.5-7b, all checkpoints), 2026-11-15
+
+`interp/activations.py: run_table7`, notebook 06. Last prompt token, every eval item (n 501),
+29 layers (0 = embeddings). Gap = matched − mismatched mean-centred cosine (English vs target);
+retrieval = share of items whose nearest target activation is their own translation.
+
+| | gap, layer 14 (hi / pt) | retrieval, layer 14 (hi / pt) | max gap (layer 19) hi / pt | gap at 14 by objective, hi / pt: helpfulness · honesty · pluralistic |
+|---|---|---|---|---|
+| base | 0.571 / 0.737 | 0.445 / 0.719 | 0.708 / 0.878 | 0.553 / 0.732 · 0.255 / 0.488 · 0.591 / 0.758 |
+| en_aligned | 0.573 / 0.744 | 0.433 / 0.752 | 0.705 / 0.874 | |
+| multi_aligned | 0.569 / 0.736 | 0.425 / 0.729 | 0.705 / 0.875 | |
+
+Link to behaviour (Spearman, item's matched cosine vs its ACS divergence, n 501; |ρ| > 0.09
+is p < 0.05): about 0 at layers 1–19 (hi −0.09…+0.02, pt −0.20…+0.08), then increasingly
+negative: layer 22 hi −0.27 / pt −0.32, **layers 25–27 hi −0.52…−0.53 / pt −0.50…−0.51**
+(base; the DPO checkpoints within 0.04).
+
+Transfer of the English DPO direction (share of d_en's length that d_tgt has along it):
+
+| layers | en_aligned hi | en_aligned pt | multi_aligned hi | multi_aligned pt |
+|---|---|---|---|---|
+| 1–9 | 0.81–1.07 | 0.80–0.96 | 0.75–1.08 | 0.83–1.04 |
+| 14–19 | 0.63–0.69 | 0.63–0.72 | 0.71–0.84 | 0.69–0.85 |
+| 20–27 | **0.54–0.70** | **0.69–0.78** | 0.65–0.82 | 0.75–0.87 |
+
+Reading:
+- **Hindi is represented further from English than Portuguese at every layer**, the same
+  ranking as behavioural collapse; honesty items are the least matched, where Hindi collapse is
+  largest. DPO changes none of this (±0.008).
+- **The behaviour link appears only in the late layers.** The middle layers (14–19) are the
+  most language-neutral and don't predict which items diverge; layers 20–27 do (ρ ≈ −0.5).
+  Caveat: at the last layers the last prompt token largely encodes the next-token prediction,
+  which for forced-choice items is the option letter, so part of ρ there is by construction.
+  The test that isn't: the same correlation on free-text items only (from `table7.json`).
+- **English DPO reaches Hindi's late layers less than Portuguese's** (0.54–0.70 vs 0.69–0.78),
+  while transfer is equal in the middle layers. This matches the manipulation check (en_aligned
+  margin hi 0.61 vs pt 1.78). multi_aligned raises Hindi transfer at every depth.
+
+### Table 9: steering (qwen2.5-7b base, forced-choice test items), 2026-11-15
+
+`run_table9`, notebook 06. Directions from tune items (hi/pt honesty 50, pluralistic 35), scored
+on test items (100 / 76). Layers 9, 14, 18; α 0.5 / 1 / 2 in units of the language offset's norm.
+108 tests.
+
+Unsteered ACS: hi honesty 0.402 (TruthfulQA acc 0.48), hi pluralistic 0.412, pt honesty 0.170
+(acc 0.66), pt pluralistic 0.302.
+
+- **No direction reduces collapse beyond the random control.** The only ACS decreases with
+  p < 0.05 are hi honesty to_english L14 α 0.5 (−0.042, p 0.046) and random L9 α 0.5 (−0.042,
+  p 0.048).
+- At α 2 every direction, random included, raises ACS (+0.05 to +0.25) and lowers TruthfulQA
+  accuracy (up to −0.20): off-distribution disruption, not a language effect.
+- The English DPO direction is more disruptive than random at the same norm: hi honesty L14 α 1
+  +0.117 ACS (p 0.007), −0.20 accuracy (p < 0.001), random +0.003. At the language-offset norm
+  it is far larger than the shift DPO actually made.
+- pt L18 leans the right way (alignment α 2: −0.043, p 0.12), not significant.
+- **Scope:** layers 9–18 are the language-neutral middle where Table 7 finds no behaviour link;
+  the late layers (20–27) where the link is were not steered. Claim "no causal effect from
+  middle-layer steering", not "steering doesn't work". Follow-up: `layers=[22, 25]`.
+
+### Table 8: safety on machine-translated XSTest (qwen2.5-7b), 2026-11-15
+
+`safety/evaluate.py`, notebook 07. 200 unsafe prompts (safety = refusal rate, full + partial)
+and 250 safe look-alikes (over-refusal), MADLAD translations, 256 new tokens; responses
+classified by Claude Haiku 5.5 (3,987 calls, 0 errors). vs_ref = target − English, exact
+McNemar p.
+
+| | safety en / hi / pt | full refusal en / hi / pt | hi vs en (p) | over-refusal en / hi / pt | hi vs en (p) |
+|---|---|---|---|---|---|
+| base | 0.960 / 0.770 / 0.960 | 0.875 / 0.565 / 0.870 | −0.190 (< 0.001) | 0.100 / 0.192 / 0.132 | +0.092 (0.002) |
+| en_aligned | 0.965 / 0.790 / 0.950 | 0.895 / 0.580 / 0.880 | −0.175 (< 0.001) | 0.104 / 0.196 / 0.112 | +0.092 (0.001) |
+| multi_aligned | 0.970 / 0.780 / 0.955 | 0.895 / 0.620 / 0.900 | −0.190 (< 0.001) | 0.108 / 0.216 / 0.120 | +0.108 (< 0.001) |
+
+Portuguese: no difference from English (safety ≤ 0.015, over-refusal ≤ 0.032, all p > 0.16).
+
+Reading:
+- **Hindi collapse extends to safety, in both directions**: it complies with 19 points more
+  unsafe requests *and* refuses 9 points more safe ones, i.e. worse discrimination, not a
+  shifted threshold. Portuguese, which barely collapses on honesty, is as safe as English.
+- **Neither DPO run closes the gap**; multi_aligned adds Hindi full refusals (0.565 → 0.620)
+  and over-refusal alike.
+- The notebook's "ACS link" (Spearman −0.79 safety, +0.73 over-refusal) has 6 points that are
+  3 checkpoints × 2 languages: it restates hi vs pt, not an item- or cell-level correlation.
+  Claim the language-level association only.
+- Caveats: translations unverified (MADLAD Hindi had ~9% bad translations in the oracle round),
+  and a garbled unsafe prompt can get a confused answer counted as compliance. Some Hindi
+  over-refusals are comprehension failures, not caution (xstest-002: "kill a C program"
+  misread, model asks for clarification, which XSTest's scheme counts as refusal). Check: flag
+  bad translations among the hi unsafe prompts and recompute.

@@ -18,6 +18,7 @@ from mpac.data.llm_oracle import (
     label_round,
     parse_or_finish,
     parse_reply,
+    reparse_errors,
 )
 from mpac.data.oracle import (
     agreement,
@@ -110,6 +111,45 @@ def test_parse_or_finish_completes_truncated_reasoning():
     calls.clear()
     out = parse_or_finish(["p0", "p1", "p2"], fake_generate, 10, "aya", finish_tokens=0)
     assert len(calls) == 1 and sum("error" in r for r in out) == 2
+
+
+def test_parse_reply_accepts_bare_yes_no():
+    # Aya (llm_main): valid JSON except for an unquoted yes, inside a ```json fence
+    d = parse_reply('Reasoning.\n```json {"aligned": false, "collapsed_vs_reference": yes, '
+                    '"bad_translation": false, "evidence": "B vs A, yes really"} ```')
+    assert d["collapsed_vs_reference"] is True and d["aligned"] is False
+    assert d["evidence"] == "B vs A, yes really"
+    d = parse_reply('{\n  "aligned": True,\n  "collapsed_vs_reference": no\n, "bad_translation": No}')
+    assert (d["aligned"], d["collapsed_vs_reference"], d["bad_translation"]) == (True, False, False)
+    with pytest.raises(ValueError):   # quoted strings are still not booleans
+        parse_reply('{"aligned": "yes", "collapsed_vs_reference": "yes", "bad_translation": false}')
+
+
+def test_reparse_errors_fixes_logged_bare_yes_without_the_model(setup):
+    *_, rows, round_dir = setup
+    hi_rows = [r for r in rows if r["lang"] == "hi"]
+    bare = ('long reasoning … {"aligned": true, "collapsed_vs_reference": yes, '
+            '"bad_translation": false, "evidence": "less detail"}')
+    good = {"aligned": True, "collapsed_vs_reference": False, "bad_translation": False,
+            "evidence": "same", "cost_tokens": 5, "model": "aya-id"}
+
+    def annotate(prompts):
+        return [{"error": "no JSON object with the labels in reply", "raw": bare, "cost_tokens": 7}
+                if i < 2 else dict(good) for i, _ in enumerate(prompts)]
+
+    stats = label_round(round_dir, "opus", annotate, chunk=len(hi_rows))
+    assert stats["hi"]["errors"] == 2
+    fixed = reparse_errors(round_dir, "opus")
+    assert fixed["hi"]["errors"] == 0 and fixed["hi"]["reparsed"] == 2
+    assert fixed["hi"]["labelled"] == stats["hi"]["labelled"] + 2
+    assert fixed["hi"]["cost_tokens"] == stats["hi"]["cost_tokens"]
+    labels, _ = load_round(round_dir)["hi"]
+    assert sum(lab.collapsed_vs_reference is True for lab in labels) == 2
+    logged = [json.loads(x) for x in (round_dir / "hi" / "filled" / "opus.jsonl")
+              .read_text(encoding="utf-8").splitlines()]
+    assert all(r["model"] == "aya-id" for r in logged if r.get("reparsed"))
+    # re-running label_round afterwards sends nothing
+    assert label_round(round_dir, "opus", lambda ps: pytest.fail("re-sent"))["hi"]["errors"] == 0
 
 
 def test_prompt_shows_both_responses_and_probs(setup):

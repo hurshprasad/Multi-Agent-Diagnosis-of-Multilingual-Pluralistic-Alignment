@@ -192,3 +192,11 @@ completed by the same model, greedy, up to 96 tokens. The label is still Aya's, 
 own (possibly cut-off) reasoning. Such rows carry `forced_json` and `hit_limit` in
 `filled/aya.jsonl`; report how many, and check that Aya–Opus agreement on them isn't far below
 the rest. Rows already labelled were not re-sent.
+
+Second Aya pass: the prefill rescued 46 hi / 52 pt rows; 23 hi / 11 pt still failed. Their logged
+replies end in complete JSON with an unquoted `"collapsed_vs_reference": yes` (in both passes),
+so **every remaining failure was an Aya collapse = yes vote**: dropping them would have removed
+only Aya's collapse votes, on the rows most likely to disagree with Opus. `parse_reply` now reads
+a bare yes / no / true / false as a boolean (quoted `"yes"` is still rejected), and
+`reparse_errors` re-parses the logged replies without calling the model (`reparsed: True` in
+the log). Run Sonnet's adjudication again afterwards: it picks up only the new disagreements.

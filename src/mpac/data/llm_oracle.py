@@ -110,6 +110,14 @@ def build_prompt(row: dict) -> str:
     return "\n".join(parts + ["", REPLY_FORMAT])
 
 
+# An unquoted yes / no / True / False used as a JSON value (quoted "yes" is still rejected).
+_BARE_BOOL = re.compile(r"(:\s*)(yes|no|true|false)(?=\s*[,}\n])", re.IGNORECASE)
+
+
+def _bare_to_json(m: re.Match) -> str:
+    return m.group(1) + ("true" if m.group(2).lower() in ("yes", "true") else "false")
+
+
 def parse_reply(text: str) -> dict:
     """Last JSON object in a reply (after any reasoning) -> the LABEL_SCHEMA fields. Raises
     ValueError otherwise."""
@@ -118,7 +126,10 @@ def parse_reply(text: str) -> dict:
         try:
             obj, _ = dec.raw_decode(text, m.start())
         except json.JSONDecodeError:
-            continue
+            try:   # Aya writes `"collapsed_vs_reference": yes`; a bare yes/no is unambiguous
+                obj, _ = dec.raw_decode(_BARE_BOOL.sub(_bare_to_json, text[m.start():]))
+            except json.JSONDecodeError:
+                continue
         if isinstance(obj, dict) and "collapsed_vs_reference" in obj:
             d = obj
             break
@@ -312,6 +323,12 @@ def _label_rows(rows: list[dict], name: str, annotate: Annotate, filled_dir: Pat
                 rec = {"key": list(_row_key(r)), "annotator": name, **rep}
                 done[_row_key(r)] = rec
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return _write_filled(rows, done, filled_dir, name, out_name)
+
+
+def _write_filled(rows: list[dict], done: dict[tuple, dict], filled_dir: Path, name: str,
+                  out_name: str) -> dict:
+    """filled/<out_name>.csv from the last logged reply per row -> counts and tokens."""
     with open(filled_dir / f"{out_name}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=SHEET_COLUMNS)
         w.writeheader()
@@ -332,6 +349,7 @@ def _label_rows(rows: list[dict], name: str, annotate: Annotate, filled_dir: Pat
             "errors": sum("error" in x for x in recs),
             "bad_translation": sum(bool(x.get("bad_translation")) for x in recs),
             "forced_json": sum(bool(x.get("forced_json")) and "error" not in x for x in recs),
+            "reparsed": sum(bool(x.get("reparsed")) and "error" not in x for x in recs),
             "cost_tokens": sum(x.get("cost_tokens", 0) for x in recs)}
 
 
@@ -346,6 +364,37 @@ def label_round(round_dir: str | Path, name: str, annotate: Annotate,
     if not out:
         raise FileNotFoundError(f"no {name}.csv sheets in {round_dir}; export the round with "
                                 f"{name!r} as an annotator first")
+    return out
+
+
+def reparse_errors(round_dir: str | Path, name: str) -> dict[str, dict]:
+    """Re-parse the logged `raw` text of <name>'s errored rows with the current parse_reply,
+    without calling the model, and rewrite filled/<name>.csv. Fixed rows are logged again with
+    `reparsed: True`; rows that still don't parse stay errors (re-run label_round for those).
+    llm_main: Aya wrote complete JSON with a bare `yes`, which the parser used to reject."""
+    out = {}
+    for sheet in sorted(Path(round_dir).glob(f"*/{name}.csv")):
+        filled_dir = sheet.parent / "filled"
+        log_path = filled_dir / f"{name}.jsonl"
+        done = _load_log(log_path)
+        model = next((r["model"] for r in done.values() if r.get("model")), "")
+        with open(log_path, "a", encoding="utf-8") as f:
+            for key, rec in list(done.items()):
+                if "error" not in rec:
+                    continue
+                try:
+                    parsed = parse_reply(rec.get("raw", ""))
+                except ValueError:
+                    continue
+                new = {"key": list(key), "annotator": name, **parsed,
+                       "cost_tokens": rec.get("cost_tokens", 0), "model": rec.get("model") or model,
+                       "hit_limit": rec.get("hit_limit"), "reparsed": True,
+                       "reasoning": rec["raw"][:rec["raw"].rfind("{")].strip()[-1500:]}
+                done[key] = new
+                f.write(json.dumps(new, ensure_ascii=False) + "\n")
+        out[sheet.parent.name] = _write_filled(_read_rows(sheet), done, filled_dir, name, name)
+    if not out:
+        raise FileNotFoundError(f"no {name}.csv sheets in {round_dir}")
     return out
 
 

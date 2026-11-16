@@ -430,9 +430,16 @@ Unsteered ACS: hi honesty 0.402 (TruthfulQA acc 0.48), hi pluralistic 0.412, pt 
   +0.117 ACS (p 0.007), −0.20 accuracy (p < 0.001), random +0.003. At the language-offset norm
   it is far larger than the shift DPO actually made.
 - pt L18 leans the right way (alignment α 2: −0.043, p 0.12), not significant.
-- **Scope:** layers 9–18 are the language-neutral middle where Table 7 finds no behaviour link;
-  the late layers (20–27) where the link is were not steered. Claim "no causal effect from
-  middle-layer steering", not "steering doesn't work". Follow-up: `layers=[22, 25]`.
+- **Late layers (22, 25; follow-up run, 2026-11-16, `table9_*_L22-25.json`): also null.**
+  to_english changes ACS by ≤ 0.007 in every cell even at α 2; random does nothing (late layers
+  absorb pushes that disrupt the middle ones). The English DPO direction slightly *raises* ACS
+  (hi honesty L22 +0.016 / +0.030 / +0.081, p ≤ 0.01; pt pluralistic L22 +0.013…+0.060, where
+  random also gives +0.006…+0.031, p ≤ 0.03). TruthfulQA accuracy within ±0.03 everywhere.
+- Run-to-run noise: the unsteered baseline moved between the two runs (hi honesty 0.402 →
+  0.396, hi pluralistic 0.412 → 0.403; 4-bit batching), so differences below ~0.01 mean nothing.
+- **Conclusion: mean-shift steering toward English reduces collapse at none of the five layers
+  tested (9–25).** With Table 7 (the behaviour link is item-level, late), collapse looks
+  item-specific; one mean direction can't undo it.
 
 ### Table 8: safety on machine-translated XSTest (qwen2.5-7b), 2026-11-15
 

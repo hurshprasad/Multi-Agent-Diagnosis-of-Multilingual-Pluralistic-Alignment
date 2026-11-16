@@ -265,7 +265,7 @@ Reading: on honesty items `collapsed_vs_reference`, the label Table 6 uses, matc
 answer key almost perfectly for both annotators (first round with lost-answer rows; pilots had
 none). Aya's `aligned` is wrong on 27% of rows, as in the pilots: `aligned` stays ungated and
 unused. Pluralistic-value and helpfulness labels rest on panel agreement alone.
-Main-round kappa: TODO (notebook 05 part B).
+Main-round kappa: see Table 6 below (hi 0.73, pt 0.61 on the rows Table 6 uses).
 
 ### Table 6: evaluator systems vs the LLM-panel oracle (qwen2.5-7b base), 2026-11-16
 
@@ -299,8 +299,9 @@ F1 by signal (test; review sheet `table6_llm_review.csv`):
 
 Oracle agreement (main round, `collapsed_vs_reference`, all 441 rows per language incl. bad
 translations): hi κ 0.65 (raw 0.83), pt κ 0.58 (raw 0.84); `aligned` hi 0.43, pt 0.23 (not
-gated). On rows Table 6 uses (bad translations dropped): TODO. Every disagreement adjudicated,
-0 unresolved. Decided before seeing the dropped-row kappa: report it as is, no re-labelling
+gated). **On the rows Table 6 uses (bad translations dropped, hi 41 / pt 15): hi κ 0.73 (raw
+0.86, n 400), pt κ 0.61 (raw 0.85, n 426); both pass 0.6, pt only just.** `aligned` hi 0.45, pt
+0.19. Every disagreement adjudicated, 0 unresolved. Decided before seeing the dropped-row kappa: report it as is, no re-labelling
 (the 0.6 gate decides whether a main round starts; pilot 3 passed it).
 
 Reading:

@@ -11,7 +11,7 @@ Record a decision here when the team settles it: what was chosen, why, and the d
 | D4 | Machine translation model | **Proposed**, pending notebook 02 comparison |
 | D5 | LLM judge model | **Proposed** (2026-11-02): Claude Haiku 5.5, kept off the oracle panel |
 | D6 | Safety / jailbreak benchmarks for the new languages | Open (pilot: translated XSTest) |
-| D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`); solo pilot uses an LLM panel |
+| D7 | Oracle labelling protocol | **Proposed** (`docs/oracle_protocol.md`); solo pilot: LLM panel, main round done (κ hi 0.73 / pt 0.61) |
 | D8 | Which PLURAL pairs train en_aligned / multi_aligned? | Open (pilot default: b) |
 | D9 | Portuguese and Spanish variants (pt-BR vs pt-PT, es-ES vs es-419) | Open |
 
@@ -84,6 +84,13 @@ Implemented in `signals/acs.py`:
 
 Open: is embedding divergence a valid proxy for *alignment* divergence, or just
 paraphrase distance? Validate against oracle labels before relying on it.
+
+**Answered for the solo pilot (2026-11-16, Table 6 in `docs/results.md`): mostly paraphrase.**
+Against the LLM-panel oracle (test split), LaBSE divergence detects free-text collapse with F1
+0.50 (hi) / 0.31 (pt), against 0.85 / 0.55 for the Haiku judge; forced-choice JSD gets 0.95 /
+0.91 (judge 0.89 / 0.74). Keep JSD for forced choice; free text needs a different cheap signal
+or a judge. Because every agent shares one deterministic signal, the lifecycle (D3) can't change
+a verdict, only coverage: agents must differ in signal for it to matter.
 
 ## D3 · Lifecycle utility (proposed)
 

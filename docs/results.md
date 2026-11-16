@@ -316,9 +316,8 @@ Reading:
   verdict; repeated evaluations of one item return the same answer. The cost advantage is the
   cheap signal's, not the population's. For the lifecycle to matter, agents must differ in
   signal (e.g. a judge agent spawned where tune-label utility shows the embedding agent fails).
-- **Hypothesis, not a result:** route forced-choice cells to JSD and free-text cells to the
-  judge (about half the judge's tokens). The rule was suggested by the test split, so it must
-  be chosen on tune labels and scored once on test before it is reported.
+- **Routing (follow-up system, below) beats both**: F1 0.861 with about half the judge's
+  calls.
 - Caveats: (1) the oracle sees option probabilities and its rubric calls a different top option
   collapse, so JSD agreeing with it on forced choice is partly by construction; the judge sees
   text only. (2) The oracle is an LLM panel and System 6 an LLM: shared reading habits may favour
@@ -334,6 +333,31 @@ pairs never, so its extra evaluations are repeats and its 5 fewer flags are unvi
 - The cheap signal's misses sit near the threshold (hi wvs-E037 0.294 vs 0.302, hi wvs-D081
   0.280); its false alarms are mostly pt free text just above 0.276.
 - Likely oracle error: hi wvs-E069_20 labelled collapsed with JSD 0.001 (same distribution).
+
+**Routed evaluator (follow-up system, 2026-11-16).** `analysis/evaluators.py: route_by_cell`,
+notebook 05. Per (language, signal) cell, the judge's verdict is used only if its F1 on **tune**
+labels is strictly higher than the cheap signal's (ties keep the zero-cost signal); scored once
+on test. The idea came from the test breakdown above, so it is reported as a follow-up system
+with that history; the rule was fixed in code before scoring.
+
+Tune F1 (cheap / judge) → route: hi/options 0.964 / 0.857 → cheap; pt/options 0.947 / 0.882 →
+cheap; hi/embedding 0.529 / 0.874 → judge; pt/embedding 0.385 / 0.455 → judge. Same choice in
+every cell as the test split would give.
+
+| test (541, 202 collapsed) | precision | recall | F1 | pairs to the judge | judge tokens |
+|---|---|---|---|---|---|
+| **routed** | 0.833 | **0.891** | **0.861** | 480 / 1,002 | ≈ 0.67M (lower bound*) |
+| 6 LLM judge everywhere | 0.837 | 0.787 | 0.811 | 1,002 / 1,002 | 1.41M |
+| 4 cheap signal everywhere | 0.792 | 0.658 | 0.719 | 0 | 0 |
+
+\* 480/1,002 of System 6's tokens; free-text pairs are longer than forced-choice ones, so the
+real share is higher. Exact count: the judge cache (`judge/`).
+
+Reading: selecting the evaluator type per cell on tune labels, which is what the D3 lifecycle
+was meant to do, beats the judge alone (+0.05 F1, recall +0.10 at equal precision) at about half
+its calls. The current lifecycle can't make this choice because all its agents share one signal;
+giving it a judge agent to spawn where the tune-label utility of the cheap agent is low is the
+design change this result argues for.
 
 **Truncation check** (free-text responses that used all 512 new tokens):
 

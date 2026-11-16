@@ -66,3 +66,26 @@ def test_table8_end_to_end(cfg):
     rows = {r["lang"]: r for r in out["rows"]}
     assert rows["en"]["safety"] == 1.0 and rows["hi"]["safety"] == 0.0
     assert rows["hi"]["acs_forced"] == 0.4 and out["path"].endswith("table8.json")
+
+
+def test_translation_check_drops_items_flagged_in_any_language(cfg):
+    from mpac.safety.evaluate import parse_translation, translation_check
+    items = build_safety_items(cfg, ROWS, fake_translate)
+
+    def checker(prompts):   # hi garbles items 1 and 5, pt garbles item 1
+        out = []
+        for _, user in prompts:
+            k = int(user.split("prompt ")[1].split("\n")[0])
+            bad = k in (1, 5) if "Translation (hi)" in user else k == 1
+            out.append({"bad_translation": bad, "evidence": "x"})
+        return out
+    r = translation_check(cfg, items, checker)
+    assert r["n_bad"] == {"hi": 2, "pt": 1} and r["errors"] == 0
+    assert r["n_bad_by_label"]["hi"] == {"unsafe": 1, "safe": 1}
+    assert sorted(it.item_id for it in r["kept"]) == [it.item_id for it in items
+                                                       if it.item_id not in ("xstest-001", "xstest-005")]
+    # an error anywhere: nothing is kept, so a partial check can't pass as the verified subset
+    r = translation_check(cfg, items, lambda ps: [{"error": "e"}] + checker(ps[1:]))
+    assert r["errors"] == 1 and r["kept"] == []
+    with pytest.raises(ValueError):
+        parse_translation({"bad_translation": "yes"})

@@ -157,16 +157,33 @@ def load_signals(cfg: dict, model_id: str, checkpoint: str) -> dict:
             "lang_ids": detect_languages(gens)}
 
 
+def _resolved_labels(cfg: dict, round_name: str, model_id: str, checkpoint: str) -> tuple[dict, dict]:
+    from mpac.data.oracle import drop_bad_translations, load_round, resolve, to_oracle
+    from mpac.paths import subdir
+
+    labels, adj = [], []
+    for lab, ad in load_round(subdir(cfg, "oracle") / round_name).values():
+        labels += lab
+        adj += ad
+    labels, bad = drop_bad_translations(labels, adj)
+    resolved, left = resolve(labels, adj, cfg["oracle"]["annotators_per_item"])
+    return to_oracle(resolved, model_id, checkpoint), {"unresolved": len(left), "bad_translation": len(bad)}
+
+
 def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
-                round_name: str = "main", signals: dict | None = None) -> tuple[dict, dict, dict]:
+                round_name: str = "main", signals: dict | None = None,
+                forced_choice_round: str | None = None) -> tuple[dict, dict, dict]:
     """(tune labels, test labels, info). source="human" or "llm": the resolved labels of
     oracle/<round_name>/ (filled by people, or by the LLM panel in data/llm_oracle.py; same
     layout). Items marked bad translation are dropped, and an item needs
     oracle.annotators_per_item annotators. "proxy": data.oracle.proxy_oracle (pipeline check
-    only)."""
-    from mpac.data.oracle import drop_bad_translations, load_round, proxy_oracle, resolve, to_oracle
+    only).
+
+    forced_choice_round: for a _long checkpoint (free text re-generated, forced choice copied,
+    generate.copy_forced_choice): `round_name` supplies the free-text labels, and this round's
+    labels of the original checkpoint supply the forced-choice ones (same answers)."""
+    from mpac.data.oracle import proxy_oracle
     from mpac.data.splits import get_or_create_splits
-    from mpac.paths import subdir
 
     if source == "proxy":
         s = signals or load_signals(cfg, model_id, checkpoint)
@@ -175,17 +192,21 @@ def load_oracle(cfg: dict, model_id: str, checkpoint: str, source: str = "human"
         info = {"source": "proxy (TruthfulQA answers, honesty only): NOT REPORTABLE"}
     elif source in ("human", "llm"):
         from mpac.data.loaders import load_items
+        from mpac.generation.generate import weights_checkpoint
 
-        splits = get_or_create_splits(cfg, load_items(cfg))
-        labels, adj = [], []
-        for lab, ad in load_round(subdir(cfg, "oracle") / round_name).values():
-            labels += lab
-            adj += ad
-        labels, bad = drop_bad_translations(labels, adj)
-        resolved, left = resolve(labels, adj, cfg["oracle"]["annotators_per_item"])
-        allo = to_oracle(resolved, model_id, checkpoint)
-        info = {"source": f"{source}, round {round_name}", "unresolved": len(left),
-                "bad_translation": len(bad)}
+        items = load_items(cfg)
+        splits = get_or_create_splits(cfg, items)
+        allo, counts = _resolved_labels(cfg, round_name, model_id, checkpoint)
+        info = {"source": f"{source}, round {round_name}", **counts}
+        if forced_choice_round:
+            fc = {it.item_id for it in items if it.is_forced_choice}
+            allo = {k: v for k, v in allo.items() if k[1] not in fc}
+            more, c2 = _resolved_labels(cfg, forced_choice_round, model_id,
+                                        weights_checkpoint(checkpoint))
+            allo |= {k: v for k, v in more.items() if k[1] in fc}
+            info |= {"source": f"{source}, round {round_name} (free text) + "
+                               f"{forced_choice_round} (forced choice)",
+                     "forced_choice": c2}
     else:
         raise ValueError("source must be 'human', 'llm' or 'proxy'")
     tune = {k: v for k, v in allo.items() if splits.get(k[1]) == "tune"}
@@ -208,7 +229,8 @@ def make_judge(cfg: dict):
 
 
 def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
-           round_name: str = "main", embedding_margin: float = 0.15, judge=None) -> dict:
+           round_name: str = "main", embedding_margin: float = 0.15, judge=None,
+           forced_choice_round: str | None = None) -> dict:
     """Thresholds (floor start, tuned on tune labels), then every system on the same signals
     (System 6 only with a `judge`, e.g. make_judge(cfg)); saved to
     results/<model>/<checkpoint>/table6_<source>.json."""
@@ -217,7 +239,8 @@ def table6(cfg: dict, model_id: str, checkpoint: str, source: str = "human",
     from mpac.signals.calibration import floor_thresholds, tune_thresholds
 
     s = load_signals(cfg, model_id, checkpoint)
-    tune, test, info = load_oracle(cfg, model_id, checkpoint, source, round_name, s)
+    tune, test, info = load_oracle(cfg, model_id, checkpoint, source, round_name, s,
+                                   forced_choice_round)
     if not test:
         raise ValueError(f"no test-split labels for {model_id}/{checkpoint} ({info})")
     ref, targets = cfg["languages"]["reference"], cfg["languages"]["targets"]

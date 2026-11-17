@@ -191,7 +191,11 @@ def length_report(pairs: list[dict], count_tokens: Callable[[str, str], int],
 
 
 def adapter_dir(cfg: dict, model_id: str, checkpoint: str) -> Path | None:
-    """Where train_dpo saves (and generation loads) the LoRA adapter; None for base."""
+    """Where train_dpo saves (and generation loads) the LoRA adapter; None for base. A _long
+    checkpoint (free text re-generated at a higher token limit) uses its namesake's adapter."""
+    from mpac.generation.generate import weights_checkpoint
+
+    checkpoint = weights_checkpoint(checkpoint)
     if checkpoint == "base":
         return None
     from mpac.paths import subdir

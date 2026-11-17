@@ -12,6 +12,11 @@ languages:
 
 checkpoints: [base, en_aligned, multi_aligned]   # aligned ones: notebooks/04_train_dpo.ipynb
 
+generation:
+  long:                          # free text re-generated as checkpoint base_long (notebook 01, last
+    max_new_tokens: 1536         # section): Hindi hit 512 on 80% of free-text responses (PLURAL 99%)
+    batch_size: 32               # A100; 16 on an L4
+
 data:
   n_verified_per_lang: 100
   n_oracle_labels: 120           # 2 languages x 3 objectives x 20

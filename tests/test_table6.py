@@ -117,3 +117,70 @@ def test_route_by_cell_chooses_on_tune_and_scores_on_test():
     # a tie on tune keeps the zero-cost signal
     tie = [row("pt", "options", "tune", True, True, True), row("pt", "options", "test", True, True, False)]
     assert route_by_cell(tie)["route"] == {"pt/options": CHEAP}
+
+
+def _fill(paths, label):
+    """Both annotators of every sheet answer collapsed_vs_reference = label(row)."""
+    for ps in paths.values():
+        (ps[0].parent / "filled").mkdir()
+        for p in ps:
+            rs = list(csv.DictReader(p.open(encoding="utf-8")))
+            for r in rs:
+                r["aligned"] = "yes"
+                r["collapsed_vs_reference"] = "yes" if label(r) else "no"
+            with open(p.parent / "filled" / p.name, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=list(rs[0]))
+                w.writeheader()
+                w.writerows(rs)
+
+
+def test_long_checkpoint_takes_free_text_labels_from_its_round_and_forced_choice_from_main(cfg, tmp_path):
+    from dataclasses import replace
+
+    from mpac.analysis.evaluators import load_oracle
+    from mpac.generation.generate import copy_forced_choice, weights_checkpoint
+    from mpac.training.dpo import adapter_dir
+
+    items, gens, oracle = make_synthetic(TARGETS, OBJECTIVES, n_items=60)
+    # synthetic items are all forced choice: make the helpfulness ones free text
+    items = [replace(it, options=None) if it.objective == "helpfulness" else it for it in items]
+    free = {it.item_id for it in items if it.options is None}
+    gens = {l: {i: replace(g, option_probs=None) if i in free else g for i, g in by.items()}
+            for l, by in gens.items()}
+    fc = {it.item_id for it in items if it.is_forced_choice}
+    assert fc and len(fc) < len(items)
+    write_jsonl(tmp_path / "items" / "items.jsonl", [it.to_dict() for it in items])
+    cache = GenerationCache(tmp_path / "generations")
+    cache.add(g for by in gens.values() for g in by.values())
+
+    # _long: forced choice copied unchanged, free text re-generated (here: new text)
+    langs = ["en", *TARGETS]
+    n_fc = copy_forced_choice(cache, "synthetic", "base", "base_long", langs)
+    assert n_fc == sum(g.option_probs is not None for by in gens.values() for g in by.values())
+    assert copy_forced_choice(cache, "synthetic", "base", "base_long", langs) == 0   # idempotent
+    cache.add(replace(g, checkpoint="base_long", response=g.response + " (longer)")
+              for by in gens.values() for g in by.values() if g.option_probs is None)
+    long = cache.load_all("synthetic", "base_long", langs)
+    assert all(long[l][i].option_probs == gens[l][i].option_probs for l in langs for i in fc if i in gens[l])
+    assert weights_checkpoint("base_long") == "base" and adapter_dir(cfg, "m", "base_long") is None
+    assert adapter_dir(cfg, "m", "en_aligned_long") == adapter_dir(cfg, "m", "en_aligned")
+
+    # llm_main labels base (planted labels); llm_long labels base_long's free text: all "yes"
+    _fill(export_round(sample_for_labelling(items, {("synthetic", "base"): gens}, 10**9, TARGETS),
+                       tmp_path / "oracle" / "llm_main", {"hi": ["a", "b"], "pt": ["c", "d"]}),
+          lambda r: oracle[(r["lang"], r["item_id"], r["objective"])])
+    free_long = {l: {i: g for i, g in by.items() if g.option_probs is None} for l, by in long.items()}
+    _fill(export_round(sample_for_labelling(items, {("synthetic", "base_long"): free_long}, 10**9, TARGETS),
+                       tmp_path / "oracle" / "llm_long", {"hi": ["a", "b"], "pt": ["c", "d"]}),
+          lambda r: True)
+
+    tune, test, info = load_oracle(cfg, "synthetic", "base_long", "llm", "llm_long",
+                                   forced_choice_round="llm_main")
+    allo = tune | test
+    assert {k[1] for k in allo} == {it.item_id for it in items}
+    assert all(v for k, v in allo.items() if k[1] not in fc)                       # from llm_long
+    assert all(v == oracle[k] for k, v in allo.items() if k[1] in fc)             # from llm_main
+    assert "llm_main (forced choice)" in info["source"]
+    # without forced_choice_round, base_long has only its own (free-text) labels
+    t2, s2, _ = load_oracle(cfg, "synthetic", "base_long", "llm", "llm_long")
+    assert not {k[1] for k in t2 | s2} & fc

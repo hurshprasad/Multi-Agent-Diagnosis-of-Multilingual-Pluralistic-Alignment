@@ -15,6 +15,16 @@ from tqdm.auto import tqdm
 from mpac.data.schema import Generation, ParallelItem
 from mpac.generation.cache import GenerationCache
 
+# Checkpoint-name suffix for a re-generation of free text at a higher token limit (e.g.
+# "base_long"): same weights as the checkpoint without it, its own cache / embeddings / results /
+# oracle keys, so it never mixes with the original run.
+LONG_SUFFIX = "_long"
+
+
+def weights_checkpoint(checkpoint: str) -> str:
+    """The checkpoint whose weights a (possibly _long) checkpoint name uses."""
+    return checkpoint.removesuffix(LONG_SUFFIX)
+
 
 def load_model(hf_name: str, load_in_4bit: bool = True, adapter_path: str | None = None):
     """Load tokenizer + model. 4-bit lets 7-8B models fit on a 16 GB Colab T4."""
@@ -62,12 +72,15 @@ def option_probs(tok, model, prompt: str, options: list[str]) -> list[float]:
 def generate_for_language(
     tok, model, items: list[ParallelItem], *, model_id: str, checkpoint: str, lang: str,
     cache: GenerationCache, max_new_tokens: int = 512, batch_size: int = 8,
+    free_text_only: bool = False,
 ) -> int:
-    """Generate for one language, skipping items already cached. Returns number written."""
+    """Generate for one language, skipping items already cached. Returns number written.
+    free_text_only: skip forced-choice items (for a _long re-run; see copy_forced_choice)."""
     import torch
 
     done = cache.done_ids(model_id, checkpoint, lang)
-    todo = [it for it in items if lang in it.prompts and it.item_id not in done]
+    todo = [it for it in items if lang in it.prompts and it.item_id not in done
+            and not (free_text_only and it.is_forced_choice)]
     written = 0
     for i in tqdm(range(0, len(todo), batch_size), desc=f"{model_id}/{checkpoint}/{lang}"):
         batch = todo[i : i + batch_size]
@@ -86,6 +99,20 @@ def generate_for_language(
                                    meta={"n_new_tokens": n, "hit_limit": n >= max_new_tokens}))
         written += cache.add(gens)  # write per batch so a Colab disconnect loses at most one batch
     return written
+
+
+def copy_forced_choice(cache: GenerationCache, model_id: str, src: str, dst: str,
+                       langs: list[str]) -> int:
+    """Forced-choice generations of checkpoint `src` copied unchanged to `dst`. Their answer is
+    the option probabilities, which the token limit doesn't touch, so a _long checkpoint only
+    regenerates free text and keeps the same forced-choice answers (and oracle labels)."""
+    gens = []
+    for lang in langs:
+        for g in cache.load(model_id, src, lang).values():
+            if g.option_probs is not None:
+                d = g.to_dict() | {"checkpoint": dst}
+                gens.append(Generation.from_dict(d))
+    return cache.add(gens)
 
 
 def token_limit_report(gens: dict[str, dict[str, Generation]], items: list[ParallelItem], tok,

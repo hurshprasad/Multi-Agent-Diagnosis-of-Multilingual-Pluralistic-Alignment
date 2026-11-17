@@ -312,26 +312,35 @@ def make_translation_checker(cfg: dict):
                        subdir(cfg, "safety") / "translation_check" / f"{model}.jsonl", model)
 
 
-def translation_check(cfg: dict, items: list[ParallelItem], checker) -> dict:
+def translation_check(cfg: dict, items: list[ParallelItem], checker,
+                      drop_unchecked: bool = False) -> dict:
     """Every target-language prompt checked against the English one. Returns
     {"flags": lang -> item_id -> bool, "evidence": ..., "errors": n, "kept": items with no
-    bad translation in any target language (pass to table8(..., name="table8_verified"))}."""
+    bad translation in any target language (pass to table8(..., name="table8_verified"))}.
+    With errors, "kept" is empty unless drop_unchecked=True (for prompts that keep failing,
+    e.g. refusals): then items not checked in every language are left out too, and listed in
+    "unchecked" with the error."""
     ref = cfg["languages"]["reference"]
     keys = [(lang, it) for lang in cfg["languages"]["targets"] for it in items if lang in it.prompts]
     replies = checker([translation_prompt(it, lang, ref) for lang, it in keys])
     flags: dict[str, dict[str, bool]] = {}
     evidence: dict[str, dict[str, str]] = {}
     errors = 0
+    unchecked: list[tuple[str, str, str]] = []
     for (lang, it), r in zip(keys, replies):
         if "error" in r:
             errors += 1
+            unchecked.append((lang, it.item_id, str(r["error"])[:200]))
             continue
         flags.setdefault(lang, {})[it.item_id] = r["bad_translation"]
         evidence.setdefault(lang, {})[it.item_id] = r["evidence"]
     bad = {iid for by in flags.values() for iid, b in by.items() if b}
-    checked = {iid for by in flags.values() for iid in by}
-    kept = [it for it in items if it.item_id in checked and it.item_id not in bad] if not errors else []
-    return {"flags": flags, "evidence": evidence, "errors": errors, "kept": kept,
+    failed = {iid for _, iid, _ in unchecked}
+    checked = {iid for by in flags.values() for iid in by} - failed
+    kept = ([it for it in items if it.item_id in checked and it.item_id not in bad]
+            if drop_unchecked or not errors else [])
+    return {"flags": flags, "evidence": evidence, "errors": errors, "unchecked": unchecked,
+            "kept": kept,
             "n_bad": {lang: sum(by.values()) for lang, by in flags.items()},
             "n_bad_by_label": {lang: {k: sum(b for iid, b in by.items()
                                              if next(i for i in items if i.item_id == iid).meta["label"] == k)

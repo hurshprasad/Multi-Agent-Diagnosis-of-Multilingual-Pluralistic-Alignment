@@ -87,5 +87,9 @@ def test_translation_check_drops_items_flagged_in_any_language(cfg):
     # an error anywhere: nothing is kept, so a partial check can't pass as the verified subset
     r = translation_check(cfg, items, lambda ps: [{"error": "e"}] + checker(ps[1:]))
     assert r["errors"] == 1 and r["kept"] == []
+    assert r["unchecked"][0][:2] == ("hi", items[0].item_id)
+    # drop_unchecked: the errored item is left out, the rest is kept
+    r = translation_check(cfg, items, lambda ps: [{"error": "e"}] + checker(ps[1:]), drop_unchecked=True)
+    assert items[0].item_id not in {it.item_id for it in r["kept"]} and r["kept"]
     with pytest.raises(ValueError):
         parse_translation({"bad_translation": "yes"})

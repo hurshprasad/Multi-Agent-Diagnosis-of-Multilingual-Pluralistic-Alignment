@@ -465,8 +465,42 @@ Reading:
 - The notebook's "ACS link" (Spearman −0.79 safety, +0.73 over-refusal) has 6 points that are
   3 checkpoints × 2 languages: it restates hi vs pt, not an item- or cell-level correlation.
   Claim the language-level association only.
-- Caveats: translations unverified (MADLAD Hindi had ~9% bad translations in the oracle round),
-  and a garbled unsafe prompt can get a confused answer counted as compliance. Some Hindi
-  over-refusals are comprehension failures, not caution (xstest-002: "kill a C program"
-  misread, model asks for clarification, which XSTest's scheme counts as refusal). Check: flag
-  bad translations among the hi unsafe prompts and recompute.
+- Caveat (addressed below): a garbled unsafe prompt can get a confused answer counted as
+  compliance, and some Hindi over-refusals are comprehension failures, not caution
+  (xstest-002: "kill a C program" misread, model asks for clarification, which XSTest's scheme
+  counts as refusal).
+
+#### Table 8 on the translation-verified subset, 2026-11-16
+
+Claude Opus 5.5 (the oracle panel's annotator) checked every hi / pt prompt against the English
+(`translation_check`, cached in `safety/translation_check/`): bad = asks something different, or
+translation changed whether it reads as harmful. **Hindi 78 / 450 bad (17%: 37 unsafe, 41
+safe), Portuguese 15 (3%: 4 unsafe, 11 safe)**, about twice the Hindi rate in the oracle round:
+XSTest's safe prompts are built on harmful-sounding idioms and homonyms ("murder of crows",
+"strangle options", "a can of coke", "bomb the test"), exactly what literal MT breaks, in both
+directions (harmless → harmful-sounding, harmful → harmless or garbled). Two prompts (hi
+xstest-443, pt xstest-428) returned no verdict after re-runs and are left out too
+(`drop_unchecked=True`). An item is dropped if bad in either language, so all languages and
+checkpoints are scored on the same **365 prompts (159 unsafe, 206 safe)**;
+`safety/table8_verified.json`.
+
+| | safety en / hi / pt | full refusal en / hi / pt | hi vs en (p) | over-refusal en / hi / pt | hi vs en (p) |
+|---|---|---|---|---|---|
+| base | 0.969 / 0.792 / 0.975 | 0.887 / 0.597 / 0.893 | −0.176 (< 0.001) | 0.097 / 0.175 / 0.117 | +0.078 (0.020) |
+| en_aligned | 0.969 / 0.843 / 0.975 | 0.912 / 0.629 / 0.906 | −0.126 (< 0.001) | 0.112 / 0.175 / 0.102 | +0.063 (0.035) |
+| multi_aligned | 0.975 / 0.830 / 0.969 | 0.899 / 0.673 / 0.912 | −0.145 (< 0.001) | 0.112 / 0.214 / 0.107 | +0.102 (0.001) |
+
+Portuguese: still no difference (|safety| ≤ 0.006, p = 1.0; over-refusal ≤ 0.019, p ≥ 0.50).
+
+Reading:
+- **The Hindi safety gap survives verification**: −18 / −13 / −15 points on clean prompts (vs
+  −19 / −18 / −19 on all), all p < 0.001. Bad translations account for at most ~5 points of it,
+  and only after DPO.
+- **Over-refusal shrinks but stays**: +8 / +6 / +10 points (vs +9 / +9 / +11), p 0.02–0.001.
+  Weaker evidence than safety; on the clean set it is significant at 0.05 for every checkpoint.
+- DPO: on the verified set both runs recover a few points of Hindi safety (0.79 → 0.84 / 0.83),
+  neither closes the gap; multi_aligned again raises Hindi over-refusal (0.175 → 0.214).
+  Differences between checkpoints are a handful of prompts out of 159, not tested; don't claim
+  them.
+- Report the verified table as the main Table 8 and the full table as a robustness row
+  (CLAUDE.md: key results on the verified subset).

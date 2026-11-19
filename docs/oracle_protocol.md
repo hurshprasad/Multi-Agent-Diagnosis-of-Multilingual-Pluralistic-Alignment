@@ -200,3 +200,17 @@ only Aya's collapse votes, on the rows most likely to disagree with Opus. `parse
 a bare yes / no / true / false as a boolean (quoted `"yes"` is still rejected), and
 `reparse_errors` re-parses the logged replies without calling the model (`reparsed: True` in
 the log). Run Sonnet's adjudication again afterwards: it picks up only the new disagreements.
+
+### llm_long and the free-text gate (2026-11-19, solo pilot)
+
+Free text re-generated at 1,536 new tokens (`base_long`) and labelled as `llm_long` (same panel,
+rubric and procedure; forced-choice rows keep their `llm_main` labels). `collapsed_vs_reference`
+kappa: hi 0.34, pt 0.10, below the gate. Splitting `llm_main` by row type shows it was already
+the case at 512 tokens: forced choice κ 0.94 / 0.93, free text 0.41 / 0.22. The main round
+passed on the pooled kappa, carried by forced choice.
+
+No change to the labels or rubric (any rubric fix now would be tuned on seen disagreements).
+From now on the gate is reported per row type (forced choice / free text); free-text Table 6
+results are reported with their own kappa and marked provisional. Making free-text collapse
+reliably judgeable (a tighter definition of "clearly less useful" / "different stance", or
+human annotators) is open.

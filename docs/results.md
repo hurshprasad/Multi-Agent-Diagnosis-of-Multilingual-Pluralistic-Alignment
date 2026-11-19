@@ -265,7 +265,9 @@ Reading: on honesty items `collapsed_vs_reference`, the label Table 6 uses, matc
 answer key almost perfectly for both annotators (first round with lost-answer rows; pilots had
 none). Aya's `aligned` is wrong on 27% of rows, as in the pilots: `aligned` stays ungated and
 unused. Pluralistic-value and helpfulness labels rest on panel agreement alone.
-Main-round kappa: see Table 6 below (hi 0.73, pt 0.61 on the rows Table 6 uses).
+Main-round kappa: see Table 6 below (hi 0.73, pt 0.61 on the rows Table 6 uses). **Pooled
+kappa hides a split: forced choice κ 0.93–0.94, free text hi 0.41 / pt 0.22, below the gate**
+(see "Free-text oracle agreement", 2026-11-19).
 
 ### Table 6: evaluator systems vs the LLM-panel oracle (qwen2.5-7b base), 2026-11-16
 
@@ -373,6 +375,48 @@ covers less content in 512 tokens. Free-text results for Hindi (Table 6 free-tex
 free-text ACS, the +0.026 DPO effect on PLURAL) carry this caveat; the fix is regenerating free
 text with ≥ 1,024 new tokens in every language and re-labelling those rows. Forced-choice
 results are unaffected.
+
+### Free-text oracle agreement, and the `base_long` re-run, 2026-11-19
+
+**Re-run.** Free text re-generated for the base weights at 1,536 new tokens as checkpoint
+`base_long` (forced choice copied unchanged; `generation/generate.py: copy_forced_choice`).
+Responses hitting the limit: en 0.4%, **hi 27.5%** (helpfulness 30%, PLURAL 23%), pt 0%
+(vs 35% / 80% / 46% at 512). Round `llm_long`: all 240 free-text rows per language, same panel
+and rubric; Opus and Aya 0 errors (Aya needed no prefill or re-parse); Sonnet adjudicated
+115 hi / 104 pt; bad translations dropped hi 36, pt 15.
+
+**Agreement (`collapsed_vs_reference`, bad translations dropped), split by row type:**
+
+| round | lang | free text κ (raw, n) | helpfulness κ | PLURAL κ | forced choice κ (raw, n) |
+|---|---|---|---|---|---|
+| llm_main (512) | hi | 0.41 (0.74, 182) | 0.57 | 0.14 | 0.94 (0.97, 218) |
+| llm_main (512) | pt | 0.22 (0.72, 201) | 0.19 | 0.08 | 0.93 (0.97, 225) |
+| llm_long (1,536) | hi | 0.34 (0.75, 204) | 0.49 | 0.11 | — |
+| llm_long (1,536) | pt | 0.10 (0.67, 225) | 0.04 | 0.18 | — |
+
+Collapse rate on free text (Opus / Aya): llm_main hi 0.70 / 0.63, pt 0.17 / 0.29;
+llm_long hi 0.82 / 0.69, pt 0.19 / 0.28.
+
+Reading:
+- **The main round passed the 0.6 gate on forced choice alone.** Forced-choice agreement is
+  near-perfect (κ 0.93–0.96: the option probabilities settle it); **free-text agreement was
+  already below the gate at 512 tokens (hi 0.41, pt 0.22) and stays below it at 1,536 (0.34 /
+  0.10)**. Longer responses didn't make free-text collapse easier to judge. The gate was
+  computed on all rows and the split wasn't checked until now; it should have been gated per
+  row type.
+- **Consequence for Table 6:** the forced-choice rows (cheap signal beats the judge, F1 0.95 /
+  0.91) rest on reliable labels. The free-text rows, where the judge beats LaBSE and where the
+  routed evaluator gets its gain, are scored against labels the two annotators agree on only
+  slightly beyond chance. Those comparisons are provisional; Sonnet's adjudication decided
+  roughly a third to half of them. Report them with the free-text κ, not the pooled one.
+- Where it disagrees: pt helpfulness, Aya calls collapse about twice as often as Opus (0.38 vs
+  0.22); PLURAL in both languages near chance. "Clearly less useful" and "different stance" on
+  open-ended answers are judgement calls the rubric doesn't pin down.
+- **Truncation didn't drive the Hindi collapse labels.** With 3× the tokens, both annotators
+  call *more* Hindi free text collapsed (Opus 0.70 → 0.82; PLURAL 0.56 → 0.88), Portuguese is
+  unchanged. Complete Hindi answers show more divergence from English, not less. The truncation
+  caveat on Hindi free-text collapse can be dropped; the agreement caveat replaces it.
+- Table 6 on `base_long` is run as a robustness check below the gate (not a replacement).
 
 ### Table 7: representation similarity (qwen2.5-7b, all checkpoints), 2026-11-15
 

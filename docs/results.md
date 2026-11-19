@@ -416,7 +416,36 @@ Reading:
   call *more* Hindi free text collapsed (Opus 0.70 → 0.82; PLURAL 0.56 → 0.88), Portuguese is
   unchanged. Complete Hindi answers show more divergence from English, not less. The truncation
   caveat on Hindi free-text collapse can be dropped; the agreement caveat replaces it.
-- Table 6 on `base_long` is run as a robustness check below the gate (not a replacement).
+
+**Table 6 on `base_long`** (robustness check, free-text labels below the gate; not a
+replacement). Free-text labels from `llm_long`, forced-choice from `llm_main`; 872 labelled
+after bad translations: 305 tune, **567 test (225 collapsed)**. Thresholds: options unchanged;
+hi/embedding and pt/embedding re-tuned on the new tune labels (76 labels, 64 collapsed; 81, 17).
+Judge: Claude Haiku 5.5, 1.60M tokens (cached replies on a re-run). Saved
+`results/qwen2.5-7b/base_long/table6_llm.json`.
+
+| test | precision | recall | F1 | judge tokens | (base, 512 tokens: F1) |
+|---|---|---|---|---|---|
+| 4 / 5 cheap signal | 0.704 | 0.760 | 0.731 | 0 | 0.719 |
+| 6 LLM judge | 0.913 | 0.840 | 0.875 | 1.60M | 0.811 |
+| 7 adaptive lifecycle | 0.702 | 0.742 | 0.721 | 0 | 0.710 |
+| routed (judge on free text, cheap on forced choice; same route chosen on tune) | 0.901 | **0.933** | **0.917** | ≈ half | 0.861 |
+
+F1 by cell (cheap / judge / routed): hi free text 0.722 / 0.953 / 0.953; pt free text 0.225 /
+0.632 / 0.632; forced choice unchanged (hi 0.950 / 0.893, pt 0.909 / 0.743).
+
+Reading:
+- **Same ranking as at 512 tokens**: routed > judge > cheap ≈ lifecycle; the routing rule picks
+  the same cells. Lifecycle still adds nothing over one evaluator.
+- **Base rates flatter the Hindi free-text F1.** 84% of hi free-text tune labels are collapsed
+  (64/76): flagging every item would score F1 ≈ 0.91, so the judge's 0.953 is barely above that
+  trivial baseline, and the cheap signal's 0.722 is below it. Same issue at 512 tokens (67%
+  collapsed → always-flag F1 ≈ 0.80 vs judge 0.847). Report an always-flag baseline next to
+  free-text F1; pt free text (21% collapsed) is the informative cell, and there the judge
+  (0.63) clearly beats LaBSE (0.23) but on labels with κ 0.10.
+- Net: the forced-choice conclusion (exact signal ≥ judge, no LLM cost) is solid; the free-text
+  conclusion (judge ≫ LaBSE, so route) holds in direction in both runs but rests on
+  low-agreement labels and, for Hindi, a high base rate.
 
 ### Table 7: representation similarity (qwen2.5-7b, all checkpoints), 2026-11-15
 
